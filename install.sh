@@ -3,7 +3,7 @@
 # =============================================
 # IMT - ISO Mount Tool Installer
 # Developer: SalehGNUTUX
-# Version: 1.0.0
+# Version: 2.0.0
 # Repository: https://github.com/SalehGNUTUX/iso-mount-tool
 # =============================================
 
@@ -133,6 +133,9 @@ msg() {
             deps_ok)          echo "✓ جميع الاعتماديات مثبتة" ;;
             ubuntu_cmd)       echo "   sudo apt install zenity p7zip-full" ;;
             rhel_cmd)         echo "   sudo yum install zenity p7zip" ;;
+            install_icon)     echo "📸 جاري تثبيت أيقونة البرنامج..." ;;
+            icon_ok)          echo "✓ تم تثبيت الأيقونة" ;;
+            desktop_ok)       echo "✓ تم إنشاء مدخل القائمة" ;;
         esac
     else
         case $key in
@@ -168,6 +171,9 @@ msg() {
             deps_ok)          echo "✓ All dependencies are installed" ;;
             ubuntu_cmd)       echo "   sudo apt install zenity p7zip-full" ;;
             rhel_cmd)         echo "   sudo yum install zenity p7zip" ;;
+            install_icon)     echo "📸 Installing application icon..." ;;
+            icon_ok)          echo "✓ Icon installed" ;;
+            desktop_ok)       echo "✓ Desktop entry created" ;;
         esac
     fi
 }
@@ -285,17 +291,20 @@ download_files() {
     print_step "$(msg downloading)"
     mkdir -p "$WORK_DIR"
 
-    local files=("imt.sh" "README.md")
-    
-    # Also download install.sh itself for future reinstallation
-    files+=("install.sh")
+    # قائمة الملفات المطلوبة
+    local files=("imt.sh" "README.md" "install.sh" "imt-icon.png")
 
     for file in "${files[@]}"; do
         print_info "Downloading $file..."
         download_file "$RAW_BASE/$file" "$WORK_DIR/$file"
         if [ $? -ne 0 ]; then
-            print_error "$(msg download_fail): $file"
-            exit 1
+            # لا نخرج إذا فشل تحميل الأيقونة، فقط نكمل
+            if [ "$file" = "imt-icon.png" ]; then
+                print_warning "⚠ لم يتم العثور على ملف الأيقونة / Icon file not found"
+            else
+                print_error "$(msg download_fail): $file"
+                exit 1
+            fi
         fi
         chmod +x "$WORK_DIR/$file" 2>/dev/null || true
     done
@@ -310,9 +319,75 @@ download_files() {
 # ============================================
 remove_old() {
     print_step "$(msg removing_old)"
+    
+    # إزالة الملف التنفيذي
     sudo rm -f "$INSTALL_BIN" 2>/dev/null
+    
+    # إزالة مدخل القائمة والأيقونة
+    sudo rm -f /usr/share/applications/imt.desktop 2>/dev/null
+    sudo rm -f /usr/share/icons/hicolor/16x16/apps/imt.png 2>/dev/null
+    sudo rm -f /usr/share/icons/hicolor/22x22/apps/imt.png 2>/dev/null
+    sudo rm -f /usr/share/icons/hicolor/24x24/apps/imt.png 2>/dev/null
+    sudo rm -f /usr/share/icons/hicolor/32x32/apps/imt.png 2>/dev/null
+    sudo rm -f /usr/share/icons/hicolor/48x48/apps/imt.png 2>/dev/null
+    sudo rm -f /usr/share/icons/hicolor/64x64/apps/imt.png 2>/dev/null
+    sudo rm -f /usr/share/icons/hicolor/128x128/apps/imt.png 2>/dev/null
+    sudo rm -f /usr/share/icons/hicolor/256x256/apps/imt.png 2>/dev/null
+    
     mkdir -p "$CONFIG_DIR"
     print_success "$(msg remove_ok)"
+    echo ""
+}
+
+# ============================================
+# تثبيت أيقونة البرنامج وملف .desktop
+# ============================================
+install_desktop_entry() {
+    print_step "$(msg install_icon)"
+    
+    local icon_source="$WORK_DIR/imt-icon.png"
+    
+    # إنشاء مجلدات الأيقونات بمختلف الأحجام (نستخدم نفس الأيقونة لجميع الأحجام)
+    local icon_sizes=("16x16" "22x22" "24x24" "32x32" "48x48" "64x64" "128x128" "256x256")
+    
+    if [ -f "$icon_source" ]; then
+        for size in "${icon_sizes[@]}"; do
+            local icon_dir="/usr/share/icons/hicolor/$size/apps"
+            sudo mkdir -p "$icon_dir"
+            sudo cp "$icon_source" "$icon_dir/imt.png"
+            sudo chmod 644 "$icon_dir/imt.png"
+        done
+        print_success "$(msg icon_ok)"
+    else
+        print_warning "⚠ ملف الأيقونة غير موجود / Icon file not found"
+    fi
+    
+    # إنشاء ملف .desktop
+    local desktop_file="/usr/share/applications/imt.desktop"
+    local desktop_content='[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ISO Mount Tool
+Name[ar]=أداة ضم ملفات ISO
+Comment=Mount and extract ISO/IMG files
+Comment[ar]=ضم وفك ضغط ملفات ISO و IMG
+Exec=imt
+Icon=imt
+Terminal=true
+Categories=Utility;Archiving;FileTools;
+Keywords=iso;mount;extract;image;
+StartupNotify=false
+'
+    
+    echo "$desktop_content" | sudo tee "$desktop_file" > /dev/null
+    sudo chmod 644 "$desktop_file"
+    print_success "$(msg desktop_ok)"
+    
+    # تحديث قاعدة بيانات الأيقونات
+    if command -v gtk-update-icon-cache &> /dev/null; then
+        sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
+    fi
+    
     echo ""
 }
 
@@ -324,10 +399,13 @@ do_install() {
 
     sudo cp "$WORK_DIR/imt.sh" "$INSTALL_BIN"
     sudo chmod +x "$INSTALL_BIN"
+    
+    # تثبيت أيقونة البرنامج ومدخل القائمة
+    install_desktop_entry
 
     # حفظ الإصدار واللغة
     mkdir -p "$CONFIG_DIR"
-    echo "1.0.0" > "$VERSION_FILE"
+    echo "2.0.0" > "$VERSION_FILE"
     echo "$LANG_MODE" > "$CONFIG_DIR/language"
 
     echo ""
@@ -378,6 +456,9 @@ handle_existing_install() {
                 rm -rf "$CONFIG_DIR"
                 print_success "$(if [ "$LANG_MODE" = "AR" ]; then echo "تم حذف ملفات الإعدادات"; else echo "Configuration files removed"; fi)"
             fi
+            # إزالة أيقونة ومدخل القائمة مرة أخرى للتأكيد
+            sudo rm -f /usr/share/applications/imt.desktop 2>/dev/null
+            sudo rm -f /usr/share/icons/hicolor/*/apps/imt.png 2>/dev/null
             echo ""
             download_files
             do_install
@@ -444,7 +525,7 @@ main() {
     check_internet
     check_sudo
     
-    # فحص الاعتماديات ولكن ليس إلزامياً
+    # فحص الاعتماديات
     check_dependencies
 
     # هل الأداة مثبتة مسبقاً؟
