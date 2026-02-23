@@ -199,85 +199,89 @@ EOF
   sleep 1
 }
 
-# Detect desktop environment and available GUI tools
-detect_desktop_environment() {
-    if [ -n "$XDG_CURRENT_DESKTOP" ]; then
-        echo "$XDG_CURRENT_DESKTOP" | tr '[:upper:]' '[:lower:]'
-    elif [ -n "$DESKTOP_SESSION" ]; then
-        echo "$DESKTOP_SESSION" | tr '[:upper:]' '[:lower:]'
-    elif [ -n "$GNOME_DESKTOP_SESSION_ID" ]; then
-        echo "gnome"
-    elif [ -n "$KDE_FULL_SESSION" ]; then
-        echo "kde"
-    else
-        # Check running processes
-        if pgrep -x "plasmashell" >/dev/null; then
-            echo "kde"
-        elif pgrep -x "gnome-shell" >/dev/null; then
-            echo "gnome"
-        elif pgrep -x "xfwm4" >/dev/null; then
-            echo "xfce"
-        else
-            echo "unknown"
-        fi
-    fi
-}
+# ============================================
+# GUI file/directory selection functions
+# ============================================
 
-get_dialog_tool() {
-    if command -v kdialog &>/dev/null && [ "$(detect_desktop_environment)" = "kde" ]; then
-        echo "kdialog"
-    elif command -v zenity &>/dev/null; then
-        echo "zenity"
-    else
-        echo "none"
-    fi
-}
-
+# Try to select a file using any available GUI tool
 select_file_gui() {
     local title="$1"
     local filter="$2"
     local initial_dir="$3"
     local selected=""
     
-    case $(get_dialog_tool) in
-        kdialog)
-            selected=$(kdialog --getopenfilename "$initial_dir" "$filter" 2>/dev/null)
-            ;;
-        zenity)
-            selected=$(zenity --file-selection --title="$title" --file-filter="$filter" --filename="$initial_dir/" 2>/dev/null)
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-    echo "$selected"
-    [ -n "$selected" ]
+    # Try kdialog first (KDE)
+    if command -v kdialog &> /dev/null; then
+        selected=$(kdialog --getopenfilename "$initial_dir" "$filter" 2>/dev/null)
+        if [ -n "$selected" ]; then
+            echo "$selected"
+            return 0
+        fi
+    fi
+    
+    # Try zenity (GNOME/GTK)
+    if command -v zenity &> /dev/null; then
+        selected=$(zenity --file-selection --title="$title" --file-filter="$filter" --filename="$initial_dir/" 2>/dev/null)
+        if [ -n "$selected" ]; then
+            echo "$selected"
+            return 0
+        fi
+    fi
+    
+    # Try Xdialog (alternative)
+    if command -v Xdialog &> /dev/null; then
+        selected=$(Xdialog --fselect "$initial_dir/" 0 0 2>/dev/null)
+        if [ -n "$selected" ]; then
+            echo "$selected"
+            return 0
+        fi
+    fi
+    
+    return 1
 }
 
+# Try to select a directory using any available GUI tool
 select_dir_gui() {
     local title="$1"
     local initial_dir="$2"
     local selected=""
     
-    case $(get_dialog_tool) in
-        kdialog)
-            selected=$(kdialog --getexistingdirectory "$initial_dir" 2>/dev/null)
-            ;;
-        zenity)
-            selected=$(zenity --file-selection --directory --title="$title" --filename="$initial_dir/" 2>/dev/null)
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-    echo "$selected"
-    [ -n "$selected" ]
+    # Try kdialog
+    if command -v kdialog &> /dev/null; then
+        selected=$(kdialog --getexistingdirectory "$initial_dir" 2>/dev/null)
+        if [ -n "$selected" ]; then
+            echo "$selected"
+            return 0
+        fi
+    fi
+    
+    # Try zenity
+    if command -v zenity &> /dev/null; then
+        selected=$(zenity --file-selection --directory --title="$title" --filename="$initial_dir/" 2>/dev/null)
+        if [ -n "$selected" ]; then
+            echo "$selected"
+            return 0
+        fi
+    fi
+    
+    # Try Xdialog
+    if command -v Xdialog &> /dev/null; then
+        selected=$(Xdialog --fselect "$initial_dir/" 0 0 --stdout 2>/dev/null)
+        if [ -n "$selected" ] && [ -d "$selected" ]; then
+            echo "$selected"
+            return 0
+        fi
+    fi
+    
+    return 1
 }
 
+# ============================================
 # Function to check dependencies and show helpful message
+# ============================================
 check_dependencies_runtime() {
     local missing=()
-    if ! command -v zenity &> /dev/null && ! command -v kdialog &> /dev/null; then
+    if ! command -v zenity &> /dev/null && ! command -v kdialog &> /dev/null && ! command -v Xdialog &> /dev/null; then
         echo -e "$text_missing_zenity"
         # We continue anyway, manual input will be used
     fi
@@ -422,12 +426,10 @@ unmount_iso() {
 select_iso_file() {
     local selected=""
     
-    # Try GUI first
-    if command -v zenity &>/dev/null || command -v kdialog &>/dev/null; then
-        selected=$(select_file_gui "$text_select" "*.iso *.img *.ISO *.IMG" "$iso_dir")
-    fi
+    # Try GUI selection first
+    selected=$(select_file_gui "$text_select" "*.iso *.img *.ISO *.IMG" "$iso_dir")
     
-    # Fallback to manual input
+    # Fallback to manual input if GUI failed
     if [ -z "$selected" ]; then
         echo ""
         echo "$text_manual_path"
