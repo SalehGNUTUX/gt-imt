@@ -116,10 +116,11 @@ load_texts() {
         text_uninstall_confirm="❓ هل أنت متأكد من إزالة البرنامج؟ (سيتم حذف جميع الملفات) [y/N]: "
         text_uninstall_done="✅ تمت إزالة البرنامج بنجاح"
         text_uninstall_cancelled="❌ تم إلغاء الإزالة"
-        text_missing_zenity="⚠️ لم يتم العثور على أداة رسومية. الرجاء تثبيت zenity أو kdialog حسب بيئتك."
+        text_missing_zenity="⚠️ لم يتم العثور على أداة رسومية. الرجاء تثبيت zenity أو kdialog."
         text_manual_path="🔍 الرجاء إدخال المسار يدوياً:"
         text_file_not_found="❌ الملف غير موجود أو الإدخال فارغ."
         text_choose_gui="🖥️ اختر باستخدام مدير الملفات"
+        text_try_gui_first="🔍 محاولة فتح مدير الملفات..."
     else
         # English texts
         text_title="GT-IMT - ISO Mount Tool"
@@ -160,10 +161,11 @@ load_texts() {
         text_uninstall_confirm="❓ Are you sure you want to uninstall? (all files will be removed) [y/N]: "
         text_uninstall_done="✅ Uninstall completed successfully"
         text_uninstall_cancelled="❌ Uninstall cancelled"
-        text_missing_zenity="⚠️ No graphical dialog tool found. Please install zenity or kdialog for your environment."
+        text_missing_zenity="⚠️ No graphical dialog tool found. Please install zenity or kdialog."
         text_manual_path="🔍 Please enter the path manually:"
         text_file_not_found="❌ File not found or empty input."
         text_choose_gui="🖥️ Choose using file manager"
+        text_try_gui_first="🔍 Attempting to open file manager..."
     fi
 }
 
@@ -200,80 +202,105 @@ EOF
 }
 
 # ============================================
-# GUI file/directory selection functions
+# GUI file/directory selection functions (محسنة)
 # ============================================
 
-# Try to select a file using any available GUI tool
+# التحقق من وجود بيئة رسومية
+check_display() {
+    if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
+        return 1
+    fi
+    return 0
+}
+
+# دالة موحدة لاختيار الملفات
 select_file_gui() {
     local title="$1"
     local filter="$2"
     local initial_dir="$3"
     local selected=""
-    
-    # Try kdialog first (KDE)
+
+    # إذا لم تكن هناك بيئة رسومية، نعود فوراً
+    if ! check_display; then
+        return 1
+    fi
+
+    # 1. محاولة kdialog (KDE)
     if command -v kdialog &> /dev/null; then
-        selected=$(kdialog --getopenfilename "$initial_dir" "$filter" 2>/dev/null)
-        if [ -n "$selected" ]; then
+        selected=$(kdialog --title "$title" --getopenfilename "$initial_dir" "$filter" 2>/dev/null)
+        if [ -n "$selected" ] && [ -f "$selected" ]; then
             echo "$selected"
             return 0
         fi
     fi
-    
-    # Try zenity (GNOME/GTK)
+
+    # 2. محاولة zenity (GNOME/GTK)
     if command -v zenity &> /dev/null; then
         selected=$(zenity --file-selection --title="$title" --file-filter="$filter" --filename="$initial_dir/" 2>/dev/null)
-        if [ -n "$selected" ]; then
+        if [ -n "$selected" ] && [ -f "$selected" ]; then
             echo "$selected"
             return 0
         fi
     fi
-    
-    # Try Xdialog (alternative)
+
+    # 3. محاولة Xdialog (بديل)
     if command -v Xdialog &> /dev/null; then
-        selected=$(Xdialog --fselect "$initial_dir/" 0 0 2>/dev/null)
-        if [ -n "$selected" ]; then
+        selected=$(Xdialog --title "$title" --fselect "$initial_dir/" 0 0 2>/dev/null)
+        if [ -n "$selected" ] && [ -f "$selected" ]; then
             echo "$selected"
             return 0
         fi
     fi
-    
+
     return 1
 }
 
-# Try to select a directory using any available GUI tool
+# دالة موحدة لاختيار المجلدات
 select_dir_gui() {
     local title="$1"
     local initial_dir="$2"
     local selected=""
-    
-    # Try kdialog
+
+    if ! check_display; then
+        return 1
+    fi
+
+    # 1. kdialog
     if command -v kdialog &> /dev/null; then
-        selected=$(kdialog --getexistingdirectory "$initial_dir" 2>/dev/null)
-        if [ -n "$selected" ]; then
-            echo "$selected"
-            return 0
-        fi
-    fi
-    
-    # Try zenity
-    if command -v zenity &> /dev/null; then
-        selected=$(zenity --file-selection --directory --title="$title" --filename="$initial_dir/" 2>/dev/null)
-        if [ -n "$selected" ]; then
-            echo "$selected"
-            return 0
-        fi
-    fi
-    
-    # Try Xdialog
-    if command -v Xdialog &> /dev/null; then
-        selected=$(Xdialog --fselect "$initial_dir/" 0 0 --stdout 2>/dev/null)
+        selected=$(kdialog --title "$title" --getexistingdirectory "$initial_dir" 2>/dev/null)
         if [ -n "$selected" ] && [ -d "$selected" ]; then
             echo "$selected"
             return 0
         fi
     fi
-    
+
+    # 2. zenity
+    if command -v zenity &> /dev/null; then
+        selected=$(zenity --file-selection --directory --title="$title" --filename="$initial_dir/" 2>/dev/null)
+        if [ -n "$selected" ] && [ -d "$selected" ]; then
+            echo "$selected"
+            return 0
+        fi
+    fi
+
+    # 3. Xdialog
+    if command -v Xdialog &> /dev/null; then
+        selected=$(Xdialog --title "$title" --fselect "$initial_dir/" 0 0 2>/dev/null)
+        if [ -n "$selected" ] && [ -d "$selected" ]; then
+            echo "$selected"
+            return 0
+        fi
+    fi
+
     return 1
+}
+
+# دالة لفتح مدير الملفات في مجلد معين
+open_file_manager() {
+    local dir="$1"
+    if [ -d "$dir" ]; then
+        xdg-open "$dir" 2>/dev/null &
+    fi
 }
 
 # ============================================
@@ -283,7 +310,6 @@ check_dependencies_runtime() {
     local missing=()
     if ! command -v zenity &> /dev/null && ! command -v kdialog &> /dev/null && ! command -v Xdialog &> /dev/null; then
         echo -e "$text_missing_zenity"
-        # We continue anyway, manual input will be used
     fi
     if ! command -v 7z &> /dev/null; then
         missing+=("p7zip")
@@ -422,14 +448,16 @@ unmount_iso() {
     done
 }
 
-# Function to select ISO file
+# Function to select ISO file (محسنة)
 select_iso_file() {
     local selected=""
     
-    # Try GUI selection first
+    echo "$text_try_gui_first"
+    
+    # محاولة استخدام الواجهة الرسومية أولاً
     selected=$(select_file_gui "$text_select" "*.iso *.img *.ISO *.IMG" "$iso_dir")
     
-    # Fallback to manual input if GUI failed
+    # إذا فشلت، نطلب الإدخال اليدوي
     if [ -z "$selected" ]; then
         echo ""
         echo "$text_manual_path"
@@ -522,7 +550,7 @@ mount_iso() {
     done
 }
 
-# ISO extraction function
+# ISO extraction function (محسنة)
 extract_iso() {
     if ! command -v 7z &> /dev/null; then
         if [ "$lang" = "ar" ]; then
@@ -566,7 +594,7 @@ extract_iso() {
                 output_dir="$(dirname "$iso_path")/$(basename "$iso_path" .iso)_extracted"
                 ;;
             2)
-                # Try GUI folder selection
+                echo "$text_try_gui_first"
                 output_dir=$(select_dir_gui "$text_select_dir" "$HOME")
                 if [ -z "$output_dir" ]; then
                     echo "$text_manual_path"
@@ -587,13 +615,17 @@ extract_iso() {
 
         local extract_option=""
         if [ -d "$output_dir" ] && [ "$(ls -A "$output_dir" 2>/dev/null)" ]; then
-            if [ "$lang" = "ar" ]; then
-                choice=$(zenity --list --title="$text_existing" --text="المجلد الهدف يحتوي على ملفات موجودة مسبقاً:" --column="خيار" "$text_overwrite" "$text_skip" "$text_cancel" --width=400 --height=200 2>/dev/null)
-            else
-                choice=$(zenity --list --title="$text_existing" --text="Target folder contains existing files:" --column="Option" "$text_overwrite" "$text_skip" "$text_cancel" --width=400 --height=200 2>/dev/null)
+            # محاولة استخدام الأداة الرسومية للسؤال عن الاستبدال
+            local choice=""
+            if command -v zenity &> /dev/null; then
+                if [ "$lang" = "ar" ]; then
+                    choice=$(zenity --list --title="$text_existing" --text="المجلد الهدف يحتوي على ملفات موجودة مسبقاً:" --column="خيار" "$text_overwrite" "$text_skip" "$text_cancel" --width=400 --height=200 2>/dev/null)
+                else
+                    choice=$(zenity --list --title="$text_existing" --text="Target folder contains existing files:" --column="Option" "$text_overwrite" "$text_skip" "$text_cancel" --width=400 --height=200 2>/dev/null)
+                fi
             fi
 
-            # Fallback if zenity fails
+            # Fallback if GUI fails
             if [ -z "$choice" ]; then
                 echo ""
                 echo "$text_existing"
@@ -646,7 +678,7 @@ extract_iso() {
     sleep 1
 }
 
-# ISO directory setup
+# ISO directory setup (محسنة)
 setup_iso_dir() {
     while true; do
         clear
@@ -679,7 +711,7 @@ setup_iso_dir() {
                 fi
                 ;;
             2)
-                xdg-open "$iso_dir" &
+                open_file_manager "$iso_dir"
                 ;;
             0)
                 return
@@ -743,7 +775,7 @@ update_tool() {
         fi
     done
     
-    # Download icons
+    # Download icons (محسنة)
     mkdir -p "icons"
     local icon_sizes=("16x16" "24x24" "32x32" "48x48" "64x64" "128x128" "256x256" "512x512")
     for size in "${icon_sizes[@]}"; do
