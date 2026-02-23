@@ -2,11 +2,11 @@
 
 # =============================================
 # ISO MOUNT TOOL (IMT) - by SalehGNUTUX
+# Version: 2.0.0
 # Supports Arabic & English with auto-detection
 # =============================================
 
 #!/bin/bash
-
 
 if [ "$EUID" -ne 0 ]; then
     if command -v pkexec &> /dev/null; then
@@ -17,8 +17,7 @@ if [ "$EUID" -ne 0 ]; then
     fi
 fi
 
-
-HERE="$(dirname "$(readlink -f "${0}")")"
+HERE="$(dirname "$(readlink -f "${0}"))"
 
 # Detect default terminal
 if [ -n "$(command -v x-terminal-emulator)" ]; then
@@ -37,11 +36,11 @@ fi
 # Run the tool in detected terminal
 "$TERMINAL" -e "$HERE/usr/bin/imt"
 
-
 # Initial settings
 iso_dir="$HOME/iso"
 mnt_dir="/mnt/iso_mounts"  # مسار ثابت لجميع نقاط الضم
 temp_file="/tmp/iso_selection.tmp"
+lang_file="$HOME/.config/imt/language"  # ملف لحفظ اللغة المختارة
 
 # إنشاء مجلد الضم الرئيسي إذا لم يكن موجوداً
 sudo mkdir -p "$mnt_dir"
@@ -50,7 +49,12 @@ sudo chmod 777 "$mnt_dir"  # إعطاء صلاحيات كافية (يمكن تع
 # Language settings (auto/ar/en)
 lang="auto"
 
-# Auto-detect system language
+# Load saved language if exists
+if [ -f "$lang_file" ]; then
+    lang=$(cat "$lang_file")
+fi
+
+# Auto-detect system language if set to auto
 if [ "$lang" = "auto" ]; then
     system_lang=$(locale | grep LANG= | cut -d= -f2 | cut -d_ -f1)
     if [ "$system_lang" = "ar" ]; then
@@ -70,7 +74,7 @@ load_texts() {
         text_unmount="إلغاء ضم ملف ISO"
         text_show="عرض الملفات المضمومة"
         text_extract="فك ضغط ملف ISO"
-        text_switch="التبديل إلى الإنجليزية"
+        text_switch="English"  # عند العربية، النص يشير للإنجليزية
         text_exit="خروج"
         text_success="تمت العملية بنجاح"
         text_failed="فشلت العملية"
@@ -85,6 +89,7 @@ load_texts() {
         text_cancel="إلغاء العملية"
         text_existing="الملفات الموجودة مسبقاً"
         text_mount_point="نقطة الضم"
+        text_language="اللغة الحالية: العربية"
     else
         # English texts
         text_title="ISO Mount Tool"
@@ -93,7 +98,7 @@ load_texts() {
         text_unmount="Unmount ISO File"
         text_show="Show mounted files"
         text_extract="Extract ISO file"
-        text_switch="Switch to Arabic"
+        text_switch="العربية"  # عند الإنجليزية، النص يشير للعربية
         text_exit="Exit"
         text_success="Operation successful"
         text_failed="Operation failed"
@@ -108,6 +113,7 @@ load_texts() {
         text_cancel="Cancel operation"
         text_existing="Existing files"
         text_mount_point="Mount point"
+        text_language="Current language: English"
     fi
 }
 
@@ -148,9 +154,6 @@ EOF
   echo -e "\033[0m"
   sleep 1
 }
-
-# Version
-VERSION="1.0.0"
 
 # Function to check dependencies
 check_dependencies() {
@@ -608,6 +611,7 @@ main_menu() {
         ==============================
         | $(if [ "$lang" = "ar" ]; then echo "مسار ISO الحالي:"; else echo "Current ISO path:"; fi) $iso_dir
         | $(if [ "$lang" = "ar" ]; then echo "$text_mount_point:"; else echo "$text_mount_point:"; fi) $mnt_dir
+        | $text_language
         ==============================
         | 1. $text_setup            |
         | 2. $text_mount            |
@@ -634,12 +638,19 @@ main_menu() {
             6)
                 if [ "$lang" = "ar" ]; then
                     lang="en"
-                    echo "تم التبديل إلى الإنجليزية"
                 else
                     lang="ar"
-                    echo "تم التبديل إلى العربية"
                 fi
+                # حفظ اللغة المختارة
+                mkdir -p "$HOME/.config/imt"
+                echo "$lang" > "$lang_file"
                 load_texts
+                echo ""
+                if [ "$lang" = "ar" ]; then
+                    echo "✓ تم التبديل إلى العربية"
+                else
+                    echo "✓ Switched to English"
+                fi
                 sleep 1
                 ;;
             0)
