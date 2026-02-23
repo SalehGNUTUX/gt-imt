@@ -149,6 +149,9 @@ EOF
   sleep 1
 }
 
+# Version
+VERSION="1.0.0"
+
 # Function to check dependencies
 check_dependencies() {
     missing=()
