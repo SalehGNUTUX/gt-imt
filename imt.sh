@@ -116,6 +116,8 @@ load_texts() {
         text_uninstall_confirm="❓ هل أنت متأكد من إزالة البرنامج؟ (سيتم حذف جميع الملفات) [y/N]: "
         text_uninstall_done="✅ تمت إزالة البرنامج بنجاح"
         text_uninstall_cancelled="❌ تم إلغاء الإزالة"
+        text_missing_zenity="⚠️ الأمر zenity غير مثبت! لا يمكن فتح مدير الملفات الرسومي.\n\nللتثبيت:\n   • أوبونتو/ديبيان: sudo apt install zenity\n   • فيدورا: sudo dnf install zenity\n   • آرتش: sudo pacman -S zenity\n   • أوبن سوزي: sudo zypper install zenity"
+        text_missing_7z="⚠️ الأمر 7z غير مثبت! لا يمكن فك ضغط الملفات.\n\nللتثبيت:\n   • أوبونتو/ديبيان: sudo apt install p7zip-full\n   • فيدورا: sudo dnf install p7zip\n   • آرتش: sudo pacman -S p7zip\n   • أوبن سوزي: sudo zypper install p7zip"
     else
         # English texts
         text_title="GT-IMT - ISO Mount Tool"
@@ -156,6 +158,8 @@ load_texts() {
         text_uninstall_confirm="❓ Are you sure you want to uninstall? (all files will be removed) [y/N]: "
         text_uninstall_done="✅ Uninstall completed successfully"
         text_uninstall_cancelled="❌ Uninstall cancelled"
+        text_missing_zenity="⚠️ zenity is not installed! Cannot open graphical file dialog.\n\nTo install:\n   • Ubuntu/Debian: sudo apt install zenity\n   • Fedora: sudo dnf install zenity\n   • Arch: sudo pacman -S zenity\n   • OpenSUSE: sudo zypper install zenity"
+        text_missing_7z="⚠️ 7z is not installed! Cannot extract files.\n\nTo install:\n   • Ubuntu/Debian: sudo apt install p7zip-full\n   • Fedora: sudo dnf install p7zip\n   • Arch: sudo pacman -S p7zip\n   • OpenSUSE: sudo zypper install p7zip"
     fi
 }
 
@@ -191,31 +195,37 @@ EOF
   sleep 1
 }
 
-# Function to check dependencies
-check_dependencies() {
-    missing=()
-
+# Function to check dependencies and show helpful message
+check_dependencies_runtime() {
+    local missing=()
     if ! command -v zenity &> /dev/null; then
         missing+=("zenity")
+        echo -e "$text_missing_zenity"
     fi
-
     if ! command -v 7z &> /dev/null; then
         missing+=("p7zip")
+        echo -e "$text_missing_7z"
     fi
-
     if ! command -v mount &> /dev/null; then
         missing+=("mount")
+        if [ "$lang" = "ar" ]; then
+            echo "⚠️ الأمر mount غير موجود! هذا أمر أساسي في النظام."
+        else
+            echo "⚠️ mount command not found! This is a core system utility."
+        fi
     fi
-
     if [ ${#missing[@]} -gt 0 ]; then
         if [ "$lang" = "ar" ]; then
-            zenity --error --text="الإعتماديات الناقصة:\n\n${missing[*]}\n\nالرجاء تثبيتها قبل المتابعة." --width=400
+            echo ""
+            echo "الرجاء تثبيت الإعتماديات الناقصة ثم أعد تشغيل البرنامج."
+            read -p "اضغط Enter للخروج..."
         else
-            zenity --error --text="Missing dependencies:\n\n${missing[*]}\n\nPlease install them before proceeding." --width=400
+            echo ""
+            echo "Please install missing dependencies and restart the program."
+            read -p "Press Enter to exit..."
         fi
-        return 1
+        exit 1
     fi
-    return 0
 }
 
 # Function to show mounted files
@@ -409,11 +419,8 @@ mount_iso() {
 # ISO extraction function
 extract_iso() {
     if ! command -v 7z &> /dev/null; then
-        if [ "$lang" = "ar" ]; then
-            zenity --error --text="الأداة 7z غير مثبتة!\n\nالرجاء تثبيتها بأحد الأمرين:\n\nsudo apt install p7zip-full   # لأوبونتو/ديبيان\nsudo yum install p7zip        # لـRHEL/CentOS" --width=500
-        else
-            zenity --error --text="7z tool not installed!\n\nPlease install with:\n\nsudo apt install p7zip-full   # Ubuntu/Debian\nsudo yum install p7zip        # RHEL/CentOS" --width=500
-        fi
+        echo -e "$text_missing_7z"
+        read -p "Press Enter to continue..."
         return
     fi
 
@@ -789,14 +796,8 @@ settings_menu() {
 
 # Main menu
 main_menu() {
-    if ! check_dependencies; then
-        if [ "$lang" = "ar" ]; then
-            echo "الاعتماديات الناقصة تمنع تشغيل البرنامج."
-        else
-            echo "Missing dependencies prevent the tool from running."
-        fi
-        exit 1
-    fi
+    # تحقق من التبعيات أولاً
+    check_dependencies_runtime
 
     while true; do
         clear
