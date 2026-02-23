@@ -17,7 +17,7 @@ VERSION_FILE="$CONFIG_DIR/version"
 INSTALL_BIN="$INSTALL_DIR/imt"
 WORK_DIR="$HOME/.gt-imt-src"
 
-# الألوان
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -31,7 +31,7 @@ print_warning() { echo -e "${YELLOW}⚠ $1${NC}"; }
 print_info()    { echo -e "${BLUE}➜ $1${NC}"; }
 print_step()    { echo -e "${CYAN}[*] $1${NC}"; }
 
-# قراءة آمنة تعمل مع curl | bash
+# Safe read for curl|bash environment
 safe_read() {
     local prompt="$1"
     local varname="$2"
@@ -45,7 +45,7 @@ safe_read() {
 }
 
 # ============================================
-# الشعار
+# Banner
 # ============================================
 show_banner() {
     clear
@@ -59,7 +59,7 @@ show_banner() {
 }
 
 # ============================================
-# اختيار اللغة
+# Language selection
 # ============================================
 select_language() {
     echo "🌐 Please select language / الرجاء اختيار اللغة:"
@@ -93,7 +93,7 @@ select_language() {
 }
 
 # ============================================
-# رسائل اللغة
+# Message function
 # ============================================
 msg() {
     local key="$1"
@@ -183,7 +183,7 @@ msg() {
 }
 
 # ============================================
-# دالة التنزيل
+# Download function
 # ============================================
 download_file() {
     local url="$1"
@@ -200,11 +200,11 @@ download_file() {
 }
 
 # ============================================
-# التحقق من الاتصال
+# Internet check
 # ============================================
 check_internet() {
     print_step "$(msg checking_net)"
-    if ! ping -c 1 github.com &>/dev/null 2>&1; then
+    if ! ping -c 1 github.com &>/dev/null 2>&1 && ! ping -c 1 raw.githubusercontent.com &>/dev/null 2>&1; then
         print_error "$(msg net_fail)"
         exit 1
     fi
@@ -213,7 +213,7 @@ check_internet() {
 }
 
 # ============================================
-# التحقق من sudo
+# Sudo check
 # ============================================
 check_sudo() {
     print_step "$(msg need_sudo)"
@@ -226,14 +226,15 @@ check_sudo() {
 }
 
 # ============================================
-# دالة تثبيت التبعيات حسب مدير الحزم
+# Dependency installation (automatic)
 # ============================================
 install_dependencies() {
     print_step "$(msg check_deps)"
     local missing=()
     
-    if ! command -v zenity &> /dev/null; then
-        missing+=("zenity")
+    if ! command -v zenity &> /dev/null && ! command -v kdialog &> /dev/null; then
+        # We'll recommend installing at least one
+        missing+=("gui-dialog")
     fi
     
     if ! command -v 7z &> /dev/null; then
@@ -255,7 +256,7 @@ install_dependencies() {
     done
     echo ""
     
-    # تحديد مدير الحزم
+    # Detect package manager
     local pkg_manager=""
     local install_cmd=""
     local packages=()
@@ -268,6 +269,7 @@ install_dependencies() {
         pkg_manager="dnf"
         install_cmd="sudo dnf install -y"
         packages=("zenity" "p7zip")
+        # kdialog is separate, but we'll leave it optional
     elif command -v yum &>/dev/null; then
         pkg_manager="yum"
         install_cmd="sudo yum install -y"
@@ -322,7 +324,7 @@ install_dependencies() {
 }
 
 # ============================================
-# الحصول على الإصدار من ملف السكريبت
+# Version functions
 # ============================================
 get_remote_version() {
     local tmp_ver=""
@@ -343,7 +345,7 @@ get_installed_version() {
 }
 
 # ============================================
-# تنزيل الملفات الأساسية
+# Download main files
 # ============================================
 download_files() {
     print_step "$(msg downloading)"
@@ -370,7 +372,7 @@ download_files() {
 }
 
 # ============================================
-# تنزيل الأيقونات من المجلدات المختلفة
+# Download icons from repository structure
 # ============================================
 download_icons() {
     print_step "📸 تنزيل أيقونات البرنامج / Downloading icons"
@@ -410,21 +412,21 @@ download_icons() {
 }
 
 # ============================================
-# إزالة الإدخالات القديمة بشكل شامل
+# Thorough cleanup of old entries
 # ============================================
 remove_old() {
     print_step "$(msg removing_old)"
     
-    # إزالة الملف التنفيذي
+    # Remove binary
     sudo rm -f "$INSTALL_BIN" 2>/dev/null
     
-    # إزالة جميع ملفات .desktop في كل المسارات المحتملة
+    # Remove all possible .desktop files
     sudo rm -f /usr/share/applications/gt-imt.desktop 2>/dev/null
     sudo rm -f /usr/share/applications/imt.desktop 2>/dev/null
     sudo rm -f /usr/local/share/applications/gt-imt.desktop 2>/dev/null
     sudo rm -f /usr/local/share/applications/imt.desktop 2>/dev/null
     
-    # إزالة جميع الأيقونات بكل الأحجام
+    # Remove all icons
     sudo rm -f /usr/share/icons/hicolor/*/apps/gt-imt.png 2>/dev/null
     sudo rm -f /usr/share/icons/hicolor/*/apps/imt.png 2>/dev/null
     
@@ -434,7 +436,7 @@ remove_old() {
 }
 
 # ============================================
-# تثبيت أيقونة البرنامج وملف .desktop
+# Install icons and desktop entry
 # ============================================
 install_desktop_entry() {
     print_step "$(msg install_icon)"
@@ -449,7 +451,7 @@ install_desktop_entry() {
             sudo mkdir -p "$(dirname "$icon_dest")"
             sudo cp "$icon_source" "$icon_dest"
             sudo chmod 644 "$icon_dest"
-            # أيضاً نسخة باسم imt.png
+            # Also copy as imt.png for compatibility
             sudo cp "$icon_source" "$(dirname "$icon_dest")/imt.png"
             icons_found=1
         fi
@@ -461,7 +463,7 @@ install_desktop_entry() {
         print_warning "⚠ لم يتم العثور على أيقونات، سيتم استخدام الأيقونة الافتراضية للنظام"
     fi
     
-    # إنشاء ملف .desktop
+    # Create .desktop file
     local desktop_file="/usr/share/applications/gt-imt.desktop"
     local desktop_content='[Desktop Entry]
 Version=2.0
@@ -486,7 +488,7 @@ StartupNotify=false
     
     print_success "$(msg desktop_ok)"
     
-    # تحديث قاعدة بيانات الأيقونات
+    # Update icon cache
     if command -v gtk-update-icon-cache &> /dev/null; then
         sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
     fi
@@ -495,7 +497,7 @@ StartupNotify=false
 }
 
 # ============================================
-# التثبيت النظامي
+# System installation
 # ============================================
 do_install() {
     print_step "$(msg installing)"
@@ -503,7 +505,7 @@ do_install() {
     sudo cp "$WORK_DIR/imt.sh" "$INSTALL_BIN"
     sudo chmod +x "$INSTALL_BIN"
     
-    # تثبيت الأيقونات ومدخل القائمة
+    # Install icons and desktop entry
     install_desktop_entry
 
     mkdir -p "$CONFIG_DIR"
@@ -523,7 +525,7 @@ do_install() {
 }
 
 # ============================================
-# التعامل مع الأداة المثبتة مسبقاً
+# Handle existing installation
 # ============================================
 handle_existing_install() {
     local installed_ver remote_ver
@@ -559,7 +561,7 @@ handle_existing_install() {
                 rm -rf "$CONFIG_DIR"
                 print_success "$(if [ "$LANG_MODE" = "AR" ]; then echo "تم حذف ملفات الإعدادات"; else echo "Configuration files removed"; fi)"
             fi
-            # إزالة أيقونة ومدخل القائمة مرة أخرى للتأكيد
+            # Extra cleanup
             sudo rm -f /usr/share/applications/gt-imt.desktop 2>/dev/null
             sudo rm -f /usr/share/applications/imt.desktop 2>/dev/null
             sudo rm -f /usr/share/icons/hicolor/*/apps/gt-imt.png 2>/dev/null
@@ -577,7 +579,7 @@ handle_existing_install() {
 }
 
 # ============================================
-# البرنامج الرئيسي
+# Main program
 # ============================================
 main() {
     show_banner
@@ -585,17 +587,17 @@ main() {
     check_internet
     check_sudo
     
-    # محاولة تثبيت التبعيات أولاً
+    # Attempt to install dependencies
     install_dependencies
 
-    # تنزيل الملفات الأساسية والأيقونات
+    # Download files and icons
     download_files
     download_icons
 
     if [ -f "$INSTALL_BIN" ]; then
         handle_existing_install
     else
-        remove_old  # تأكيد إزالة أي إدخالات قديمة قبل التثبيت الجديد
+        remove_old  # Ensure clean before fresh install
         do_install
     fi
 
