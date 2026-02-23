@@ -1,22 +1,22 @@
 #!/bin/bash
 
 # =============================================
-# IMT - ISO Mount Tool Installer
+# GT-IMT - ISO Mount Tool Installer
 # Developer: SalehGNUTUX
 # Version: 2.0.0
-# Repository: https://github.com/SalehGNUTUX/iso-mount-tool
+# Repository: https://github.com/SalehGNUTUX/gt-imt
 # =============================================
 
-TOOL_NAME="IMT"
+TOOL_NAME="GT-IMT"
 DEV_NAME="SalehGNUTUX"
-REPO_URL="https://github.com/SalehGNUTUX/iso-mount-tool"
-RAW_BASE="https://raw.githubusercontent.com/SalehGNUTUX/iso-mount-tool/main"
+REPO_URL="https://github.com/SalehGNUTUX/gt-imt"
+RAW_BASE="https://raw.githubusercontent.com/SalehGNUTUX/gt-imt/main"
 MAIN_SCRIPT_URL="$RAW_BASE/imt.sh"
 INSTALL_DIR="/usr/local/bin"
-CONFIG_DIR="$HOME/.config/imt"
+CONFIG_DIR="$HOME/.config/gt-imt"
 VERSION_FILE="$CONFIG_DIR/version"
 INSTALL_BIN="$INSTALL_DIR/imt"
-WORK_DIR="$HOME/.imt-src"
+WORK_DIR="$HOME/.gt-imt-src"
 
 # الألوان
 RED='\033[0;31m'
@@ -52,7 +52,7 @@ show_banner() {
     clear
     echo ""
     echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║${NC}  💿   ${GREEN}IMT - ISO Mount Tool Installer${NC}    ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}  💿   ${GREEN}GT-IMT - ISO Mount Tool Installer${NC} ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  👨‍💻   Developer: ${YELLOW}$DEV_NAME${NC}            ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  🌐   $REPO_URL  ${CYAN}║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════╝${NC}"
@@ -80,7 +80,6 @@ select_language() {
             echo -e "${GREEN}✓ English language selected${NC}"
             ;;
         *)
-            # Auto-detect
             system_lang=$(locale | grep LANG= | cut -d= -f2 | cut -d_ -f1)
             if [ "$system_lang" = "ar" ]; then
                 LANG_MODE="AR"
@@ -271,9 +270,13 @@ check_dependencies() {
 # الحصول على الإصدار من ملف السكريبت
 # ============================================
 get_remote_version() {
-    # IMT doesn't have a version variable yet, so we'll use a placeholder
-    # You can add a VERSION="1.0.0" line to imt.sh if you want version tracking
-    echo "1.0.0"
+    local tmp_ver=""
+    if command -v curl &>/dev/null; then
+        tmp_ver=$(curl -sSL "$RAW_BASE/version.txt" 2>/dev/null)
+    elif command -v wget &>/dev/null; then
+        tmp_ver=$(wget -qO- "$RAW_BASE/version.txt" 2>/dev/null)
+    fi
+    echo "${tmp_ver:-2.0.0}"
 }
 
 get_installed_version() {
@@ -291,16 +294,14 @@ download_files() {
     print_step "$(msg downloading)"
     mkdir -p "$WORK_DIR"
 
-    # قائمة الملفات المطلوبة
-    local files=("imt.sh" "README.md" "install.sh" "imt-icon.png")
+    local files=("imt.sh" "README.md" "install.sh" "imt-icon.png" "version.txt")
 
     for file in "${files[@]}"; do
         print_info "Downloading $file..."
         download_file "$RAW_BASE/$file" "$WORK_DIR/$file"
         if [ $? -ne 0 ]; then
-            # لا نخرج إذا فشل تحميل الأيقونة، فقط نكمل
-            if [ "$file" = "imt-icon.png" ]; then
-                print_warning "⚠ لم يتم العثور على ملف الأيقونة / Icon file not found"
+            if [ "$file" = "imt-icon.png" ] || [ "$file" = "version.txt" ]; then
+                print_warning "⚠ لم يتم العثور على ملف $file / $file not found"
             else
                 print_error "$(msg download_fail): $file"
                 exit 1
@@ -320,19 +321,12 @@ download_files() {
 remove_old() {
     print_step "$(msg removing_old)"
     
-    # إزالة الملف التنفيذي
     sudo rm -f "$INSTALL_BIN" 2>/dev/null
     
-    # إزالة مدخل القائمة والأيقونة
+    sudo rm -f /usr/share/applications/gt-imt.desktop 2>/dev/null
     sudo rm -f /usr/share/applications/imt.desktop 2>/dev/null
-    sudo rm -f /usr/share/icons/hicolor/16x16/apps/imt.png 2>/dev/null
-    sudo rm -f /usr/share/icons/hicolor/22x22/apps/imt.png 2>/dev/null
-    sudo rm -f /usr/share/icons/hicolor/24x24/apps/imt.png 2>/dev/null
-    sudo rm -f /usr/share/icons/hicolor/32x32/apps/imt.png 2>/dev/null
-    sudo rm -f /usr/share/icons/hicolor/48x48/apps/imt.png 2>/dev/null
-    sudo rm -f /usr/share/icons/hicolor/64x64/apps/imt.png 2>/dev/null
-    sudo rm -f /usr/share/icons/hicolor/128x128/apps/imt.png 2>/dev/null
-    sudo rm -f /usr/share/icons/hicolor/256x256/apps/imt.png 2>/dev/null
+    sudo rm -f /usr/share/icons/hicolor/*/apps/gt-imt.png 2>/dev/null
+    sudo rm -f /usr/share/icons/hicolor/*/apps/imt.png 2>/dev/null
     
     mkdir -p "$CONFIG_DIR"
     print_success "$(msg remove_ok)"
@@ -346,33 +340,33 @@ install_desktop_entry() {
     print_step "$(msg install_icon)"
     
     local icon_source="$WORK_DIR/imt-icon.png"
-    
-    # إنشاء مجلدات الأيقونات بمختلف الأحجام (نستخدم نفس الأيقونة لجميع الأحجام)
     local icon_sizes=("16x16" "22x22" "24x24" "32x32" "48x48" "64x64" "128x128" "256x256")
     
     if [ -f "$icon_source" ]; then
         for size in "${icon_sizes[@]}"; do
             local icon_dir="/usr/share/icons/hicolor/$size/apps"
             sudo mkdir -p "$icon_dir"
+            sudo cp "$icon_source" "$icon_dir/gt-imt.png"
             sudo cp "$icon_source" "$icon_dir/imt.png"
-            sudo chmod 644 "$icon_dir/imt.png"
+            sudo chmod 644 "$icon_dir/gt-imt.png" "$icon_dir/imt.png" 2>/dev/null || true
         done
         print_success "$(msg icon_ok)"
     else
         print_warning "⚠ ملف الأيقونة غير موجود / Icon file not found"
     fi
     
-    # إنشاء ملف .desktop
-    local desktop_file="/usr/share/applications/imt.desktop"
+    local desktop_file="/usr/share/applications/gt-imt.desktop"
     local desktop_content='[Desktop Entry]
-Version=1.0
+Version=2.0
 Type=Application
-Name=ISO Mount Tool
-Name[ar]=أداة ضم ملفات ISO
+Name=GT-IMT
+Name[ar]=GT-IMT
+GenericName=ISO Mount Tool
+GenericName[ar]=أداة ضم ملفات ISO
 Comment=Mount and extract ISO/IMG files
 Comment[ar]=ضم وفك ضغط ملفات ISO و IMG
 Exec=imt
-Icon=imt
+Icon=gt-imt
 Terminal=true
 Categories=Utility;Archiving;FileTools;
 Keywords=iso;mount;extract;image;
@@ -381,9 +375,11 @@ StartupNotify=false
     
     echo "$desktop_content" | sudo tee "$desktop_file" > /dev/null
     sudo chmod 644 "$desktop_file"
+    
+    sudo ln -sf "$desktop_file" "/usr/share/applications/imt.desktop" 2>/dev/null
+    
     print_success "$(msg desktop_ok)"
     
-    # تحديث قاعدة بيانات الأيقونات
     if command -v gtk-update-icon-cache &> /dev/null; then
         sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
     fi
@@ -400,12 +396,15 @@ do_install() {
     sudo cp "$WORK_DIR/imt.sh" "$INSTALL_BIN"
     sudo chmod +x "$INSTALL_BIN"
     
-    # تثبيت أيقونة البرنامج ومدخل القائمة
     install_desktop_entry
 
-    # حفظ الإصدار واللغة
     mkdir -p "$CONFIG_DIR"
-    echo "2.0.0" > "$VERSION_FILE"
+    
+    local installed_version="2.0.0"
+    if [ -f "$WORK_DIR/version.txt" ]; then
+        installed_version=$(cat "$WORK_DIR/version.txt")
+    fi
+    echo "$installed_version" > "$VERSION_FILE"
     echo "$LANG_MODE" > "$CONFIG_DIR/language"
 
     echo ""
@@ -426,7 +425,6 @@ handle_existing_install() {
     echo -e "${YELLOW}$(msg already_installed)${NC}"
     echo -e "$(msg installed_ver) ${CYAN}${installed_ver:-unknown}${NC}"
 
-    # جلب الإصدار البعيد لمقارنته
     print_info "Fetching remote version..."
     remote_ver=$(get_remote_version)
     echo -e "$(msg remote_ver) ${CYAN}${remote_ver}${NC}"
@@ -442,22 +440,20 @@ handle_existing_install() {
 
     case $action_choice in
         1|2)
-            # إعادة التثبيت أو تحديث (نفس العملية)
             download_files
             remove_old
             do_install
             ;;
         3)
-            # إزالة كاملة ثم تثبيت جديد
             remove_old
-            # حذف الإعدادات
             safe_read "$(if [ "$LANG_MODE" = "AR" ]; then echo "هل تريد حذف ملفات الإعدادات أيضاً؟ (y/n): "; else echo "Also remove configuration files? (y/n): "; fi)" rm_config
             if [ "$rm_config" = "y" ] || [ "$rm_config" = "Y" ]; then
                 rm -rf "$CONFIG_DIR"
                 print_success "$(if [ "$LANG_MODE" = "AR" ]; then echo "تم حذف ملفات الإعدادات"; else echo "Configuration files removed"; fi)"
             fi
-            # إزالة أيقونة ومدخل القائمة مرة أخرى للتأكيد
+            sudo rm -f /usr/share/applications/gt-imt.desktop 2>/dev/null
             sudo rm -f /usr/share/applications/imt.desktop 2>/dev/null
+            sudo rm -f /usr/share/icons/hicolor/*/apps/gt-imt.png 2>/dev/null
             sudo rm -f /usr/share/icons/hicolor/*/apps/imt.png 2>/dev/null
             echo ""
             download_files
@@ -485,38 +481,6 @@ launch_tool() {
 }
 
 # ============================================
-# تثبيت الاعتماديات (اختياري)
-# ============================================
-offer_dependency_install() {
-    if [ "$LANG_MODE" = "AR" ]; then
-        echo ""
-        echo "ℹ️  قد تحتاج لتثبيت بعض الاعتماديات لتشغيل الأداة:"
-        echo "   - zenity (لواجهة المستخدم)"
-        echo "   - p7zip-full (لفك ضغط الملفات)"
-        echo ""
-        echo "   للتثبيت على أوبونتو/ديبيان:"
-        echo "   ${GREEN}sudo apt install zenity p7zip-full${NC}"
-        echo ""
-        echo "   للتثبيت على RHEL/CentOS/Fedora:"
-        echo "   ${GREEN}sudo yum install zenity p7zip${NC}"
-        echo ""
-    else
-        echo ""
-        echo "ℹ️  You may need to install some dependencies to run the tool:"
-        echo "   - zenity (for GUI dialogs)"
-        echo "   - p7zip-full (for extraction)"
-        echo ""
-        echo "   For Ubuntu/Debian:"
-        echo "   ${GREEN}sudo apt install zenity p7zip-full${NC}"
-        echo ""
-        echo "   For RHEL/CentOS/Fedora:"
-        echo "   ${GREEN}sudo yum install zenity p7zip${NC}"
-        echo ""
-    fi
-    sleep 3
-}
-
-# ============================================
 # البرنامج الرئيسي
 # ============================================
 main() {
@@ -525,14 +489,11 @@ main() {
     check_internet
     check_sudo
     
-    # فحص الاعتماديات
     check_dependencies
 
-    # هل الأداة مثبتة مسبقاً؟
     if [ -f "$INSTALL_BIN" ]; then
         handle_existing_install
     else
-        # تثبيت جديد
         download_files
         do_install
     fi
