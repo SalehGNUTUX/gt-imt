@@ -79,75 +79,75 @@ load_texts() {
     if [ "$lang" = "ar" ]; then
         # Arabic texts
         text_title="GT-IMT - أداة ضم ملفات ISO"
-        text_setup="إعداد مجلد ISO"
-        text_mount="ضم ملف ISO"
-        text_unmount="إلغاء ضم ملف ISO"
-        text_show="عرض الملفات المضمومة"
-        text_extract="فك ضغط ملف ISO"
-        text_settings="الإعدادات"
-        text_exit="خروج"
-        text_success="تمت العملية بنجاح"
-        text_failed="فشلت العملية"
-        text_choose="اختر خياراً"
-        text_invalid="اختيار غير صحيح"
-        text_no_files="لا توجد ملفات مضمومة"
-        text_mounted="الملفات المضمومة حالياً"
-        text_select="اختر ملف ISO"
-        text_select_dir="اختر مجلد الوجهة"
-        text_overwrite="استبدال الكل"
-        text_skip="تخطي الملفات الموجودة"
-        text_cancel="إلغاء العملية"
-        text_existing="الملفات الموجودة مسبقاً"
-        text_mount_point="نقطة الضم"
-        text_language="اللغة الحالية: العربية"
-        text_settings_menu="قائمة الإعدادات"
-        text_switch_lang="تبديل اللغة إلى الإنجليزية"
-        text_check_updates="التحقق من التحديثات"
-        text_about="حول البرنامج"
-        text_back="عودة"
-        text_no_updates="لا توجد تحديثات متاحة"
-        text_update_available="تحديث متوفر!"
-        text_update_now="تحديث الآن؟"
-        text_downloading_update="جاري تحميل التحديث..."
-        text_update_success="تم التحديث بنجاح"
-        text_update_failed="فشل التحديث"
-        text_about_info="GT-IMT v$CURRENT_VERSION\n\nأداة متقدمة لإدارة وضم ملفات ISO\nتم التطوير بواسطة: SalehGNUTUX\n\nالمستودع: https://github.com/SalehGNUTUX/gt-imt\nالرخصة: GPL-2.0"
+        text_setup="📁 إعداد مجلد ISO"
+        text_mount="💿 ضم ملف ISO"
+        text_unmount="⏏️ إلغاء ضم ملف ISO"
+        text_show="👁️ عرض الملفات المضمومة"
+        text_extract="📦 فك ضغط ملف ISO"
+        text_settings="⚙️ الإعدادات"
+        text_exit="🚪 خروج"
+        text_success="✅ تمت العملية بنجاح"
+        text_failed="❌ فشلت العملية"
+        text_choose="🔍 اختر خياراً"
+        text_invalid="⚠️ اختيار غير صحيح"
+        text_no_files="📭 لا توجد ملفات مضمومة"
+        text_mounted="📌 الملفات المضمومة حالياً"
+        text_select="🔎 اختر ملف ISO"
+        text_select_dir="📂 اختر مجلد الوجهة"
+        text_overwrite="📝 استبدال الكل"
+        text_skip="⏭️ تخطي الملفات الموجودة"
+        text_cancel="❌ إلغاء العملية"
+        text_existing="📋 الملفات الموجودة مسبقاً"
+        text_mount_point="📍 نقطة الضم"
+        text_language="🌐 اللغة الحالية: العربية"
+        text_settings_menu="⚙️ قائمة الإعدادات"
+        text_switch_lang="🔤 تبديل اللغة إلى الإنجليزية"
+        text_check_updates="🔄 التحقق من التحديثات"
+        text_about="ℹ️ حول البرنامج"
+        text_back="🔙 عودة"
+        text_no_updates="✅ لا توجد تحديثات متاحة"
+        text_update_available="🆕 تحديث متوفر!"
+        text_update_now="❓ تحديث الآن؟"
+        text_downloading_update="📥 جاري تحميل التحديث..."
+        text_update_success="✅ تم التحديث بنجاح"
+        text_update_failed="❌ فشل التحديث"
+        text_about_info="ℹ️ GT-IMT v$CURRENT_VERSION\n\n📀 أداة متقدمة لإدارة وضم ملفات ISO\n👨‍💻 تم التطوير بواسطة: SalehGNUTUX\n\n📦 المستودع: https://github.com/SalehGNUTUX/gt-imt\n📜 الرخصة: GPL-2.0"
     else
         # English texts
         text_title="GT-IMT - ISO Mount Tool"
-        text_setup="Setup ISO folder"
-        text_mount="Mount ISO File"
-        text_unmount="Unmount ISO File"
-        text_show="Show mounted files"
-        text_extract="Extract ISO file"
-        text_settings="Settings"
-        text_exit="Exit"
-        text_success="Operation successful"
-        text_failed="Operation failed"
-        text_choose="Choose option"
-        text_invalid="Invalid choice"
-        text_no_files="No files mounted"
-        text_mounted="Currently mounted files"
-        text_select="Select ISO file"
-        text_select_dir="Select destination folder"
-        text_overwrite="Overwrite all"
-        text_skip="Skip existing"
-        text_cancel="Cancel operation"
-        text_existing="Existing files"
-        text_mount_point="Mount point"
-        text_language="Current language: English"
-        text_settings_menu="Settings Menu"
-        text_switch_lang="Switch to Arabic"
-        text_check_updates="Check for updates"
-        text_about="About"
-        text_back="Back"
-        text_no_updates="No updates available"
-        text_update_available="Update available!"
-        text_update_now="Update now?"
-        text_downloading_update="Downloading update..."
-        text_update_success="Update successful"
-        text_update_failed="Update failed"
-        text_about_info="GT-IMT v$CURRENT_VERSION\n\nAdvanced ISO management and mounting tool\nDeveloped by: SalehGNUTUX\n\nRepository: https://github.com/SalehGNUTUX/gt-imt\nLicense: GPL-2.0"
+        text_setup="📁 Setup ISO folder"
+        text_mount="💿 Mount ISO File"
+        text_unmount="⏏️ Unmount ISO File"
+        text_show="👁️ Show mounted files"
+        text_extract="📦 Extract ISO file"
+        text_settings="⚙️ Settings"
+        text_exit="🚪 Exit"
+        text_success="✅ Operation successful"
+        text_failed="❌ Operation failed"
+        text_choose="🔍 Choose option"
+        text_invalid="⚠️ Invalid choice"
+        text_no_files="📭 No files mounted"
+        text_mounted="📌 Currently mounted files"
+        text_select="🔎 Select ISO file"
+        text_select_dir="📂 Select destination folder"
+        text_overwrite="📝 Overwrite all"
+        text_skip="⏭️ Skip existing"
+        text_cancel="❌ Cancel operation"
+        text_existing="📋 Existing files"
+        text_mount_point="📍 Mount point"
+        text_language="🌐 Current language: English"
+        text_settings_menu="⚙️ Settings Menu"
+        text_switch_lang="🔤 Switch to العربية"
+        text_check_updates="🔄 Check for updates"
+        text_about="ℹ️ About"
+        text_back="🔙 Back"
+        text_no_updates="✅ No updates available"
+        text_update_available="🆕 Update available!"
+        text_update_now="❓ Update now?"
+        text_downloading_update="📥 Downloading update..."
+        text_update_success="✅ Update successful"
+        text_update_failed="❌ Update failed"
+        text_about_info="ℹ️ GT-IMT v$CURRENT_VERSION\n\n📀 Advanced ISO management and mounting tool\n👨‍💻 Developed by: SalehGNUTUX\n\n📦 Repository: https://github.com/SalehGNUTUX/gt-imt\n📜 License: GPL-2.0"
     fi
 }
 
@@ -160,12 +160,16 @@ shopt -s nocasematch
 display_logo() {
   echo -e "\033[1;36m"
   cat << "EOF"
-
-   ______ ___________   _____ _____ 
-  / __/ _ |_  __/ __/  / __/ |__/ |/
- / _// __ |/ / / _/   / _/  | | |   
-/_/ /_/ |_/_/ /_/     /___/ |_| |_/  
-                                     
+  /$$$$$$  /$$$$$$$$    /$$$$$$ /$$      /$$ /$$$$$$$$
+ /$$__  $$|__  $$__/   |_  $$_/| $$$    /$$$|__  $$__/
+| $$  \__/   | $$        | $$  | $$$$  /$$$$   | $$   
+| $$ /$$$$   | $$ /$$$$$$| $$  | $$ $$/$$ $$   | $$   
+| $$|_  $$   | $$|______/| $$  | $$  $$$| $$   | $$   
+| $$  \ $$   | $$        | $$  | $$\  $ | $$   | $$   
+|  $$$$$$/   | $$       /$$$$$$| $$ \/  | $$   | $$   
+ \______/    |__/      |______/|__/     |__/   |__/   
+                                                      
+                                                      
 EOF
   echo -e "\033[1;33m"
   if [ "$lang" = "ar" ]; then
@@ -262,11 +266,11 @@ unmount_iso() {
         echo ""
         echo "=============================="
         if [ "$lang" = "ar" ]; then
-            echo "| 1. إلغاء الضم             |"
-            echo "| 0. رجوع                   |"
+            echo "| 1. $text_unmount             |"
+            echo "| 0. $text_back                   |"
         else
-            echo "| 1. Unmount                |"
-            echo "| 0. Back                   |"
+            echo "| 1. $text_unmount                |"
+            echo "| 0. $text_back                   |"
         fi
         echo "=============================="
         echo ""
@@ -337,11 +341,11 @@ mount_iso() {
         if [ "$lang" = "ar" ]; then
             echo "| 1. $text_select          |"
             echo "| 2. $text_show            |"
-            echo "| 0. رجوع                   |"
+            echo "| 0. $text_back                   |"
         else
             echo "| 1. $text_select          |"
             echo "| 2. $text_show            |"
-            echo "| 0. Back                   |"
+            echo "| 0. $text_back                   |"
         fi
         echo "=============================="
         echo ""
@@ -420,9 +424,9 @@ extract_iso() {
         echo ""
         echo "=============================="
         if [ "$lang" = "ar" ]; then
-            echo "| 1. فك الضغط هنا           |"
-            echo "| 2. فك الضغط في مجلد آخر   |"
-            echo "| 0. رجوع                   |"
+            echo "| 1. $text_extract هنا           |"
+            echo "| 2. $text_extract في مجلد آخر   |"
+            echo "| 0. $text_back                   |"
         else
             echo "| 1. Extract here           |"
             echo "| 2. Extract to folder      |"
@@ -507,9 +511,9 @@ setup_iso_dir() {
         echo "|      $text_setup            |"
         echo "=============================="
         if [ "$lang" = "ar" ]; then
-            echo "| 1. إنشاء مجلد ISO جديد   |"
+            echo "| 1. $text_setup جديد   |"
             echo "| 2. فتح مدير الملفات       |"
-            echo "| 0. رجوع                   |"
+            echo "| 0. $text_back                   |"
         else
             echo "| 1. Create new ISO folder  |"
             echo "| 2. Open file manager      |"
@@ -602,7 +606,19 @@ update_tool() {
         
         # تحديث الأيقونة إذا وجدت
         if [ -f "imt-icon.png" ]; then
-            sudo cp "imt-icon.png" "/usr/share/icons/hicolor/256x256/apps/imt.png" 2>/dev/null
+            # نسخ الأيقونة لجميع الأحجام المطلوبة
+            local icon_sizes=("16x16" "22x22" "24x24" "32x32" "48x48" "64x64" "128x128" "256x256")
+            for size in "${icon_sizes[@]}"; do
+                local icon_dir="/usr/share/icons/hicolor/$size/apps"
+                sudo mkdir -p "$icon_dir"
+                sudo cp "imt-icon.png" "$icon_dir/gt-imt.png"
+                sudo cp "imt-icon.png" "$icon_dir/imt.png"
+                sudo chmod 644 "$icon_dir/gt-imt.png" "$icon_dir/imt.png" 2>/dev/null || true
+            done
+            
+            if command -v gtk-update-icon-cache &> /dev/null; then
+                sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
+            fi
         fi
         
         echo "$remote_version" > "$version_file"
@@ -645,9 +661,9 @@ settings_menu() {
                 echo "$lang" > "$lang_file"
                 load_texts
                 if [ "$lang" = "ar" ]; then
-                    echo "✓ تم التبديل إلى العربية"
+                    echo "✅ تم التبديل إلى العربية"
                 else
-                    echo "✓ Switched to English"
+                    echo "✅ Switched to English"
                 fi
                 sleep 1
                 ;;
