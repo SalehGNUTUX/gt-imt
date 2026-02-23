@@ -11,7 +11,6 @@ TOOL_NAME="GT-IMT"
 DEV_NAME="SalehGNUTUX"
 REPO_URL="https://github.com/SalehGNUTUX/gt-imt"
 RAW_BASE="https://raw.githubusercontent.com/SalehGNUTUX/gt-imt/main"
-MAIN_SCRIPT_URL="$RAW_BASE/imt.sh"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="$HOME/.config/gt-imt"
 VERSION_FILE="$CONFIG_DIR/version"
@@ -122,8 +121,6 @@ msg() {
             installing)       echo "📦 جاري التثبيت النظامي..." ;;
             install_ok)       echo "🎉 تم تثبيت $TOOL_NAME بنجاح!" ;;
             run_with)         echo "🎯 يمكنك الآن تشغيل الأداة باستخدام:" ;;
-            launch_now)       echo "هل تريد تشغيل الأداة الآن؟ (y/n): " ;;
-            restart_terminal) echo "🔄 يرجى إعادة فتح الطرفية لتطبيق التغييرات" ;;
             saved_to)         echo "📁 تم حفظ الملفات في:" ;;
             no_dl_tool)       echo "❌ لم يتم العثور على curl أو wget. يرجى تثبيت أحدهما أولاً." ;;
             check_deps)       echo "🔍 جاري التحقق من الاعتماديات المطلوبة..." ;;
@@ -135,6 +132,10 @@ msg() {
             install_icon)     echo "📸 جاري تثبيت أيقونة البرنامج..." ;;
             icon_ok)          echo "✓ تم تثبيت الأيقونة" ;;
             desktop_ok)       echo "✓ تم إنشاء مدخل القائمة" ;;
+            final_message)    echo "🎉 تم تثبيت $TOOL_NAME بنجاح! يمكنك الآن:"
+                              echo "   • تشغيل البرنامج عبر الأمر: ${GREEN}imt${NC}"
+                              echo "   • أو من قائمة التطبيقات: ${GREEN}GT-IMT${NC}"
+                              ;;
         esac
     else
         case $key in
@@ -160,8 +161,6 @@ msg() {
             installing)       echo "📦 Installing to system..." ;;
             install_ok)       echo "🎉 $TOOL_NAME installed successfully!" ;;
             run_with)         echo "🎯 You can now run the tool using:" ;;
-            launch_now)       echo "Launch the tool now? (y/n): " ;;
-            restart_terminal) echo "🔄 Please restart your terminal to apply changes" ;;
             saved_to)         echo "📁 Files saved to:" ;;
             no_dl_tool)       echo "❌ Neither curl nor wget found. Please install one first." ;;
             check_deps)       echo "🔍 Checking required dependencies..." ;;
@@ -173,6 +172,10 @@ msg() {
             install_icon)     echo "📸 Installing application icon..." ;;
             icon_ok)          echo "✓ Icon installed" ;;
             desktop_ok)       echo "✓ Desktop entry created" ;;
+            final_message)    echo "🎉 $TOOL_NAME installed successfully! You can now:"
+                              echo "   • Run the tool with command: ${GREEN}imt${NC}"
+                              echo "   • Or from applications menu: ${GREEN}GT-IMT${NC}"
+                              ;;
         esac
     fi
 }
@@ -288,19 +291,19 @@ get_installed_version() {
 }
 
 # ============================================
-# تنزيل الملفات إلى مجلد العمل
+# تنزيل الملفات الأساسية
 # ============================================
 download_files() {
     print_step "$(msg downloading)"
     mkdir -p "$WORK_DIR"
 
-    local files=("imt.sh" "README.md" "install.sh" "imt-icon.png" "version.txt")
+    local files=("imt.sh" "README.md" "install.sh" "version.txt")
 
     for file in "${files[@]}"; do
         print_info "Downloading $file..."
         download_file "$RAW_BASE/$file" "$WORK_DIR/$file"
         if [ $? -ne 0 ]; then
-            if [ "$file" = "imt-icon.png" ] || [ "$file" = "version.txt" ]; then
+            if [ "$file" = "version.txt" ]; then
                 print_warning "⚠ لم يتم العثور على ملف $file / $file not found"
             else
                 print_error "$(msg download_fail): $file"
@@ -311,20 +314,65 @@ download_files() {
     done
 
     print_success "$(msg download_ok)"
-    print_info "$(msg saved_to) $WORK_DIR"
     echo ""
 }
 
 # ============================================
-# إزالة النسخة القديمة
+# تنزيل الأيقونات من المجلدات المختلفة
+# ============================================
+download_icons() {
+    print_step "📸 تنزيل أيقونات البرنامج / Downloading icons"
+    local icon_sizes=("16x16" "24x24" "32x32" "48x48" "64x64" "128x128" "256x256" "512x512")
+    local icon_dir="$WORK_DIR/icons"
+    mkdir -p "$icon_dir"
+    
+    local icons_found=0
+    for size in "${icon_sizes[@]}"; do
+        local icon_url="$RAW_BASE/icons/icons/$size/imt-icon.png"
+        local icon_file="$icon_dir/$size.png"
+        printf "📄 %-8s ... " "$size"
+        
+        if command -v curl &>/dev/null; then
+            if curl -s -f -L -o "$icon_file" "$icon_url" 2>/dev/null; then
+                echo -e "${GREEN}✓${NC}"
+                icons_found=1
+            else
+                echo -e "${YELLOW}⚠ غير موجود${NC}"
+            fi
+        else
+            if wget -q -O "$icon_file" "$icon_url" 2>/dev/null; then
+                echo -e "${GREEN}✓${NC}"
+                icons_found=1
+            else
+                echo -e "${YELLOW}⚠ not found${NC}"
+            fi
+        fi
+    done
+    
+    if [ $icons_found -eq 1 ]; then
+        print_success "تم تنزيل بعض الأيقونات / Some icons downloaded"
+    else
+        print_warning "⚠ لم يتم العثور على أي أيقونات / No icons found"
+    fi
+    echo ""
+}
+
+# ============================================
+# إزالة الإدخالات القديمة بشكل شامل
 # ============================================
 remove_old() {
     print_step "$(msg removing_old)"
     
+    # إزالة الملف التنفيذي
     sudo rm -f "$INSTALL_BIN" 2>/dev/null
     
+    # إزالة جميع ملفات .desktop في كل المسارات المحتملة
     sudo rm -f /usr/share/applications/gt-imt.desktop 2>/dev/null
     sudo rm -f /usr/share/applications/imt.desktop 2>/dev/null
+    sudo rm -f /usr/local/share/applications/gt-imt.desktop 2>/dev/null
+    sudo rm -f /usr/local/share/applications/imt.desktop 2>/dev/null
+    
+    # إزالة جميع الأيقونات بكل الأحجام
     sudo rm -f /usr/share/icons/hicolor/*/apps/gt-imt.png 2>/dev/null
     sudo rm -f /usr/share/icons/hicolor/*/apps/imt.png 2>/dev/null
     
@@ -339,22 +387,29 @@ remove_old() {
 install_desktop_entry() {
     print_step "$(msg install_icon)"
     
-    local icon_source="$WORK_DIR/imt-icon.png"
-    local icon_sizes=("16x16" "22x22" "24x24" "32x32" "48x48" "64x64" "128x128" "256x256")
+    local icon_sizes=("16x16" "24x24" "32x32" "48x48" "64x64" "128x128" "256x256" "512x512")
+    local icons_found=0
     
-    if [ -f "$icon_source" ]; then
-        for size in "${icon_sizes[@]}"; do
-            local icon_dir="/usr/share/icons/hicolor/$size/apps"
-            sudo mkdir -p "$icon_dir"
-            sudo cp "$icon_source" "$icon_dir/gt-imt.png"
-            sudo cp "$icon_source" "$icon_dir/imt.png"
-            sudo chmod 644 "$icon_dir/gt-imt.png" "$icon_dir/imt.png" 2>/dev/null || true
-        done
+    for size in "${icon_sizes[@]}"; do
+        local icon_source="$WORK_DIR/icons/$size.png"
+        local icon_dest="/usr/share/icons/hicolor/$size/apps/gt-imt.png"
+        if [ -f "$icon_source" ]; then
+            sudo mkdir -p "$(dirname "$icon_dest")"
+            sudo cp "$icon_source" "$icon_dest"
+            sudo chmod 644 "$icon_dest"
+            # أيضاً نسخة باسم imt.png
+            sudo cp "$icon_source" "$(dirname "$icon_dest")/imt.png"
+            icons_found=1
+        fi
+    done
+    
+    if [ $icons_found -eq 1 ]; then
         print_success "$(msg icon_ok)"
     else
-        print_warning "⚠ ملف الأيقونة غير موجود / Icon file not found"
+        print_warning "⚠ لم يتم العثور على أيقونات، سيتم استخدام الأيقونة الافتراضية للنظام"
     fi
     
+    # إنشاء ملف .desktop
     local desktop_file="/usr/share/applications/gt-imt.desktop"
     local desktop_content='[Desktop Entry]
 Version=2.0
@@ -375,11 +430,11 @@ StartupNotify=false
     
     echo "$desktop_content" | sudo tee "$desktop_file" > /dev/null
     sudo chmod 644 "$desktop_file"
-    
     sudo ln -sf "$desktop_file" "/usr/share/applications/imt.desktop" 2>/dev/null
     
     print_success "$(msg desktop_ok)"
     
+    # تحديث قاعدة بيانات الأيقونات
     if command -v gtk-update-icon-cache &> /dev/null; then
         sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
     fi
@@ -396,6 +451,7 @@ do_install() {
     sudo cp "$WORK_DIR/imt.sh" "$INSTALL_BIN"
     sudo chmod +x "$INSTALL_BIN"
     
+    # تثبيت الأيقونات ومدخل القائمة
     install_desktop_entry
 
     mkdir -p "$CONFIG_DIR"
@@ -410,8 +466,7 @@ do_install() {
     echo ""
     print_success "$(msg install_ok)"
     echo ""
-    print_info "$(msg run_with)"
-    echo -e "   ${GREEN}imt${NC}"
+    print_info "$(msg final_message)"
     echo ""
 }
 
@@ -441,6 +496,7 @@ handle_existing_install() {
     case $action_choice in
         1|2)
             download_files
+            download_icons
             remove_old
             do_install
             ;;
@@ -451,12 +507,14 @@ handle_existing_install() {
                 rm -rf "$CONFIG_DIR"
                 print_success "$(if [ "$LANG_MODE" = "AR" ]; then echo "تم حذف ملفات الإعدادات"; else echo "Configuration files removed"; fi)"
             fi
+            # إزالة أيقونة ومدخل القائمة مرة أخرى للتأكيد
             sudo rm -f /usr/share/applications/gt-imt.desktop 2>/dev/null
             sudo rm -f /usr/share/applications/imt.desktop 2>/dev/null
             sudo rm -f /usr/share/icons/hicolor/*/apps/gt-imt.png 2>/dev/null
             sudo rm -f /usr/share/icons/hicolor/*/apps/imt.png 2>/dev/null
             echo ""
             download_files
+            download_icons
             do_install
             ;;
         4|*)
@@ -464,20 +522,6 @@ handle_existing_install() {
             exit 0
             ;;
     esac
-}
-
-# ============================================
-# تشغيل الأداة
-# ============================================
-launch_tool() {
-    safe_read "$(msg launch_now)" launch_choice
-    if [ "$launch_choice" = "y" ] || [ "$launch_choice" = "Y" ]; then
-        exec imt
-    else
-        echo ""
-        print_info "$(msg restart_terminal)"
-        echo ""
-    fi
 }
 
 # ============================================
@@ -491,14 +535,16 @@ main() {
     
     check_dependencies
 
+    # تنزيل الملفات الأساسية والأيقونات
+    download_files
+    download_icons
+
     if [ -f "$INSTALL_BIN" ]; then
         handle_existing_install
     else
-        download_files
+        remove_old  # تأكيد إزالة أي إدخالات قديمة قبل التثبيت الجديد
         do_install
     fi
-
-    launch_tool
 
     echo -e "${CYAN}═══════════════════════════════════════════${NC}"
     echo -e "${GREEN}  $TOOL_NAME — Developer: $DEV_NAME${NC}"
