@@ -85,6 +85,7 @@ load_texts() {
         text_show="👁️ عرض الملفات المضمومة"
         text_extract="📦 فك ضغط ملف ISO"
         text_settings="⚙️ الإعدادات"
+        text_uninstall="🗑️ إزالة البرنامج"
         text_exit="🚪 خروج"
         text_success="✅ تمت العملية بنجاح"
         text_failed="❌ فشلت العملية"
@@ -101,7 +102,7 @@ load_texts() {
         text_mount_point="📍 نقطة الضم"
         text_language="🌐 اللغة الحالية: العربية"
         text_settings_menu="⚙️ قائمة الإعدادات"
-        text_switch_lang="🔤 تبديل اللغة إلى الإنجليزية"
+        text_switch_lang="🔤 English"
         text_check_updates="🔄 التحقق من التحديثات"
         text_about="ℹ️ حول البرنامج"
         text_back="🔙 عودة"
@@ -112,6 +113,9 @@ load_texts() {
         text_update_success="✅ تم التحديث بنجاح"
         text_update_failed="❌ فشل التحديث"
         text_about_info="ℹ️ GT-IMT v$CURRENT_VERSION\n\n📀 أداة متقدمة لإدارة وضم ملفات ISO\n👨‍💻 تم التطوير بواسطة: SalehGNUTUX\n\n📦 المستودع: https://github.com/SalehGNUTUX/gt-imt\n📜 الرخصة: GPL-2.0"
+        text_uninstall_confirm="❓ هل أنت متأكد من إزالة البرنامج؟ (سيتم حذف جميع الملفات) [y/N]: "
+        text_uninstall_done="✅ تمت إزالة البرنامج بنجاح"
+        text_uninstall_cancelled="❌ تم إلغاء الإزالة"
     else
         # English texts
         text_title="GT-IMT - ISO Mount Tool"
@@ -121,6 +125,7 @@ load_texts() {
         text_show="👁️ Show mounted files"
         text_extract="📦 Extract ISO file"
         text_settings="⚙️ Settings"
+        text_uninstall="🗑️ Uninstall"
         text_exit="🚪 Exit"
         text_success="✅ Operation successful"
         text_failed="❌ Operation failed"
@@ -137,7 +142,7 @@ load_texts() {
         text_mount_point="📍 Mount point"
         text_language="🌐 Current language: English"
         text_settings_menu="⚙️ Settings Menu"
-        text_switch_lang="🔤 Switch to العربية"
+        text_switch_lang="🔤 العربية"
         text_check_updates="🔄 Check for updates"
         text_about="ℹ️ About"
         text_back="🔙 Back"
@@ -148,6 +153,9 @@ load_texts() {
         text_update_success="✅ Update successful"
         text_update_failed="❌ Update failed"
         text_about_info="ℹ️ GT-IMT v$CURRENT_VERSION\n\n📀 Advanced ISO management and mounting tool\n👨‍💻 Developed by: SalehGNUTUX\n\n📦 Repository: https://github.com/SalehGNUTUX/gt-imt\n📜 License: GPL-2.0"
+        text_uninstall_confirm="❓ Are you sure you want to uninstall? (all files will be removed) [y/N]: "
+        text_uninstall_done="✅ Uninstall completed successfully"
+        text_uninstall_cancelled="❌ Uninstall cancelled"
     fi
 }
 
@@ -586,7 +594,7 @@ update_tool() {
     
     cd "$temp_dir" || return 1
     
-    local files=("imt.sh" "install.sh" "README.md" "imt-icon.png" "version.txt")
+    local files=("imt.sh" "install.sh" "README.md" "version.txt")
     local base_url="https://raw.githubusercontent.com/SalehGNUTUX/gt-imt/main"
     
     for file in "${files[@]}"; do
@@ -597,6 +605,19 @@ update_tool() {
         fi
     done
     
+    # تنزيل الأيقونات أيضاً (اختصاراً نكتفي بالأيقونة الرئيسية)
+    mkdir -p "icons"
+    local icon_sizes=("16x16" "24x24" "32x32" "48x48" "64x64" "128x128" "256x256" "512x512")
+    for size in "${icon_sizes[@]}"; do
+        local icon_url="$base_url/icons/icons/$size/imt-icon.png"
+        local icon_file="icons/$size.png"
+        if command -v curl &> /dev/null; then
+            curl -s -f -L -o "$icon_file" "$icon_url" 2>/dev/null
+        else
+            wget -q -O "$icon_file" "$icon_url" 2>/dev/null
+        fi
+    done
+    
     if [ -f "imt.sh" ]; then
         if [ -f "/usr/local/bin/imt" ]; then
             sudo cp "/usr/local/bin/imt" "/usr/local/bin/imt.backup" 2>/dev/null
@@ -604,23 +625,20 @@ update_tool() {
         sudo cp "imt.sh" "/usr/local/bin/imt"
         sudo chmod +x "/usr/local/bin/imt"
         
-        # تحديث الأيقونة إذا وجدت
-        if [ -f "imt-icon.png" ]; then
-            # نسخ الأيقونة لجميع الأحجام المطلوبة
-            local icon_sizes=("16x16" "22x22" "24x24" "32x32" "48x48" "64x64" "128x128" "256x256")
-            for size in "${icon_sizes[@]}"; do
-                local icon_dir="/usr/share/icons/hicolor/$size/apps"
-                sudo mkdir -p "$icon_dir"
-                sudo cp "imt-icon.png" "$icon_dir/gt-imt.png"
-                sudo cp "imt-icon.png" "$icon_dir/imt.png"
-                sudo chmod 644 "$icon_dir/gt-imt.png" "$icon_dir/imt.png" 2>/dev/null || true
-            done
-            
-            if command -v gtk-update-icon-cache &> /dev/null; then
-                sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
+        # تحديث الأيقونات
+        for size in "${icon_sizes[@]}"; do
+            if [ -f "icons/$size.png" ]; then
+                sudo mkdir -p "/usr/share/icons/hicolor/$size/apps"
+                sudo cp "icons/$size.png" "/usr/share/icons/hicolor/$size/apps/gt-imt.png"
+                sudo cp "icons/$size.png" "/usr/share/icons/hicolor/$size/apps/imt.png"
             fi
+        done
+        
+        if command -v gtk-update-icon-cache &> /dev/null; then
+            sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
         fi
         
+        # تحديث الإصدار
         echo "$remote_version" > "$version_file"
         
         rm -rf "$temp_dir"
@@ -628,6 +646,42 @@ update_tool() {
     else
         rm -rf "$temp_dir"
         return 1
+    fi
+}
+
+# Function to uninstall the tool
+uninstall_tool() {
+    echo ""
+    read -p "$text_uninstall_confirm" uninstall_confirm
+    if [ "$uninstall_confirm" = "y" ] || [ "$uninstall_confirm" = "Y" ]; then
+        echo ""
+        echo "🗑️  إزالة الملفات..."
+        
+        # إزالة الملف التنفيذي
+        sudo rm -f /usr/local/bin/imt 2>/dev/null
+        
+        # إزالة مداخل القائمة
+        sudo rm -f /usr/share/applications/gt-imt.desktop 2>/dev/null
+        sudo rm -f /usr/share/applications/imt.desktop 2>/dev/null
+        
+        # إزالة الأيقونات
+        sudo rm -f /usr/share/icons/hicolor/*/apps/gt-imt.png 2>/dev/null
+        sudo rm -f /usr/share/icons/hicolor/*/apps/imt.png 2>/dev/null
+        
+        # إزالة مجلد الإعدادات
+        rm -rf "$HOME/.config/gt-imt" 2>/dev/null
+        
+        # تحديث قاعدة بيانات الأيقونات
+        if command -v gtk-update-icon-cache &> /dev/null; then
+            sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
+        fi
+        
+        echo "$text_uninstall_done"
+        echo ""
+        exit 0
+    else
+        echo "$text_uninstall_cancelled"
+        sleep 1
     fi
 }
 
@@ -644,10 +698,11 @@ settings_menu() {
         echo "| 1. $text_switch_lang       |"
         echo "| 2. $text_check_updates     |"
         echo "| 3. $text_about             |"
+        echo "| 4. $text_uninstall         |"
         echo "| 0. $text_back              |"
         echo "=============================="
         echo ""
-        read -p "$text_choose [0-3]: " settings_choice
+        read -p "$text_choose [0-4]: " settings_choice
 
         case $settings_choice in
             1)
@@ -677,11 +732,7 @@ settings_menu() {
                     echo "|   $text_update_available    |"
                     echo "=============================="
                     echo ""
-                    if [ "$lang" = "ar" ]; then
-                        read -p "$text_update_now (y/n): " update_choice
-                    else
-                        read -p "$text_update_now (y/n): " update_choice
-                    fi
+                    read -p "$text_update_now (y/n): " update_choice
                     
                     if [ "$update_choice" = "y" ] || [ "$update_choice" = "Y" ]; then
                         if update_tool; then
@@ -720,6 +771,10 @@ settings_menu() {
                 else
                     read -p "Press Enter to continue... " dummy
                 fi
+                ;;
+            4)
+                # إزالة البرنامج
+                uninstall_tool
                 ;;
             0)
                 return
