@@ -121,6 +121,8 @@ load_texts() {
         text_file_not_found="❌ الملف غير موجود أو الإدخال فارغ."
         text_choose_gui="🖥️ اختر باستخدام مدير الملفات"
         text_try_gui_first="🔍 محاولة فتح مدير الملفات..."
+        text_cannot_open_gui="⚠️ تعذر فتح مدير الملفات رسومياً. يمكنك الوصول إلى المجلد يدوياً عبر الأمر:"
+        text_no_display="⚠️ لا توجد بيئة رسومية (DISPLAY غير مضبوط)."
     else
         # English texts
         text_title="GT-IMT - ISO Mount Tool"
@@ -166,6 +168,8 @@ load_texts() {
         text_file_not_found="❌ File not found or empty input."
         text_choose_gui="🖥️ Choose using file manager"
         text_try_gui_first="🔍 Attempting to open file manager..."
+        text_cannot_open_gui="⚠️ Cannot open file manager graphically. You can access the folder manually via:"
+        text_no_display="⚠️ No graphical environment (DISPLAY not set)."
     fi
 }
 
@@ -220,7 +224,6 @@ select_file_gui() {
     local initial_dir="$3"
     local selected=""
 
-    # إذا لم تكن هناك بيئة رسومية، نعود فوراً
     if ! check_display; then
         return 1
     fi
@@ -295,11 +298,122 @@ select_dir_gui() {
     return 1
 }
 
-# دالة لفتح مدير الملفات في مجلد معين
+# دالة محسنة لفتح مدير الملفات
 open_file_manager() {
     local dir="$1"
-    if [ -d "$dir" ]; then
+    
+    # التأكد من وجود المجلد
+    if [ ! -d "$dir" ]; then
+        mkdir -p "$dir"
+    fi
+    
+    # التحقق من وجود بيئة رسومية
+    if ! check_display; then
+        if [ "$lang" = "ar" ]; then
+            echo "$text_no_display"
+            echo "$text_cannot_open_gui: cd $dir"
+        else
+            echo "$text_no_display"
+            echo "$text_cannot_open_gui: cd $dir"
+        fi
+        return 1
+    fi
+    
+    # محاولة استخدام xdg-open
+    if command -v xdg-open &> /dev/null; then
         xdg-open "$dir" 2>/dev/null &
+        sleep 2 # انتظر قليلاً لنتأكد من نجاح الفتح
+        # التحقق من أن xdg-open نجح (بفحص العملية)
+        if pgrep -f "xdg-open.*$dir" >/dev/null; then
+            return 0
+        fi
+    fi
+    
+    # محاولة استخدام أوامر مدير الملفات المباشرة حسب بيئة سطح المكتب
+    local desktop_env=$(detect_desktop_environment)
+    local file_managers=()
+    
+    case $desktop_env in
+        *kde*|*plasma*)
+            file_managers=("dolphin" "krusader" "konqueror")
+            ;;
+        *gnome*|*unity*|*cinnamon*)
+            file_managers=("nautilus" "nemo" "caja")
+            ;;
+        *xfce*)
+            file_managers=("thunar")
+            ;;
+        *lxqt*|*lxde*)
+            file_managers=("pcmanfm-qt" "pcmanfm")
+            ;;
+        *mate*)
+            file_managers=("caja")
+            ;;
+        *enlightenment*)
+            file_managers=("enlightenment_filemanager")
+            ;;
+        *)
+            # قائمة عامة بمديري الملفات الشائعين
+            file_managers=("nautilus" "dolphin" "thunar" "pcmanfm" "caja" "nemo" "krusader")
+            ;;
+    esac
+    
+    for fm in "${file_managers[@]}"; do
+        if command -v "$fm" &> /dev/null; then
+            "$fm" "$dir" 2>/dev/null &
+            return 0
+        fi
+    done
+    
+    # محاولة أخيرة: استخدام xdg-open مرة أخرى مع عرض الأخطاء
+    if command -v xdg-open &> /dev/null; then
+        if [ "$lang" = "ar" ]; then
+            echo "⚠️ xdg-open فشل. سيتم عرض معلومات إضافية:"
+            xdg-open "$dir" 2>&1 | head -5
+        else
+            echo "⚠️ xdg-open failed. Showing additional info:"
+            xdg-open "$dir" 2>&1 | head -5
+        fi
+    fi
+    
+    # فشل كل المحاولات
+    if [ "$lang" = "ar" ]; then
+        echo "$text_cannot_open_gui"
+        echo "cd $dir"
+        echo "ثم استخدم: ls لعرض المحتويات"
+    else
+        echo "$text_cannot_open_gui"
+        echo "cd $dir"
+        echo "Then use: ls to list contents"
+    fi
+    return 1
+}
+
+# كشف بيئة سطح المكتب
+detect_desktop_environment() {
+    if [ -n "$XDG_CURRENT_DESKTOP" ]; then
+        echo "$XDG_CURRENT_DESKTOP" | tr '[:upper:]' '[:lower:]'
+    elif [ -n "$DESKTOP_SESSION" ]; then
+        echo "$DESKTOP_SESSION" | tr '[:upper:]' '[:lower:]'
+    elif [ -n "$GNOME_DESKTOP_SESSION_ID" ]; then
+        echo "gnome"
+    elif [ -n "$KDE_FULL_SESSION" ]; then
+        echo "kde"
+    else
+        # Check running processes
+        if pgrep -x "plasmashell" >/dev/null; then
+            echo "kde"
+        elif pgrep -x "gnome-shell" >/dev/null; then
+            echo "gnome"
+        elif pgrep -x "xfwm4" >/dev/null; then
+            echo "xfce"
+        elif pgrep -x "cinnamon" >/dev/null; then
+            echo "cinnamon"
+        elif pgrep -x "mate-panel" >/dev/null; then
+            echo "mate"
+        else
+            echo "unknown"
+        fi
     fi
 }
 
