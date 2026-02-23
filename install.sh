@@ -232,9 +232,9 @@ install_dependencies() {
     print_step "$(msg check_deps)"
     local missing=()
     
-    if ! command -v zenity &> /dev/null && ! command -v kdialog &> /dev/null; then
-        # We'll recommend installing at least one
-        missing+=("gui-dialog")
+    # Check for GUI dialog tools
+    if ! command -v zenity &> /dev/null && ! command -v kdialog &> /dev/null && ! command -v Xdialog &> /dev/null; then
+        missing+=("gui-dialog (zenity/kdialog)")
     fi
     
     if ! command -v 7z &> /dev/null; then
@@ -264,39 +264,38 @@ install_dependencies() {
     if command -v apt &>/dev/null; then
         pkg_manager="apt"
         install_cmd="sudo apt update && sudo apt install -y"
-        packages=("zenity" "p7zip-full")
+        packages=("zenity" "kdialog" "p7zip-full")
     elif command -v dnf &>/dev/null; then
         pkg_manager="dnf"
         install_cmd="sudo dnf install -y"
-        packages=("zenity" "p7zip")
-        # kdialog is separate, but we'll leave it optional
+        packages=("zenity" "kdialog" "p7zip")
     elif command -v yum &>/dev/null; then
         pkg_manager="yum"
         install_cmd="sudo yum install -y"
-        packages=("zenity" "p7zip")
+        packages=("zenity" "kdialog" "p7zip")
     elif command -v pacman &>/dev/null; then
         pkg_manager="pacman"
         install_cmd="sudo pacman -S --noconfirm"
-        packages=("zenity" "p7zip")
+        packages=("zenity" "kdialog" "p7zip")
     elif command -v zypper &>/dev/null; then
         pkg_manager="zypper"
         install_cmd="sudo zypper install -y"
-        packages=("zenity" "p7zip")
+        packages=("zenity" "kdialog" "p7zip")
     else
         echo ""
         print_warning "$(msg install_deps)"
         echo ""
         echo "   # Ubuntu/Debian:"
-        echo "   sudo apt install zenity p7zip-full"
+        echo "   sudo apt install zenity kdialog p7zip-full"
         echo ""
         echo "   # Fedora/RHEL/CentOS:"
-        echo "   sudo dnf install zenity p7zip"
+        echo "   sudo dnf install zenity kdialog p7zip"
         echo ""
         echo "   # Arch:"
-        echo "   sudo pacman -S zenity p7zip"
+        echo "   sudo pacman -S zenity kdialog p7zip"
         echo ""
         echo "   # OpenSUSE:"
-        echo "   sudo zypper install zenity p7zip"
+        echo "   sudo zypper install zenity kdialog p7zip"
         echo ""
         safe_read "$(if [ "$LANG_MODE" = "AR" ]; then echo "اضغط Enter للمتابعة دون تثبيت..."; else echo "Press Enter to continue without installing..."; fi)" dummy
         return 1
