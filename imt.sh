@@ -298,7 +298,9 @@ select_dir_gui() {
     return 1
 }
 
-# دالة محسنة لفتح مدير الملفات الافتراضي بشكل جذري
+# ============================================
+# دالة فتح مدير الملفات (تم التحديث للحل الجذري)
+# ============================================
 open_file_manager() {
     local dir="$1"
     
@@ -315,38 +317,29 @@ open_file_manager() {
         return 1
     fi
 
-    # الحل الجذري: محاولة فتح المجلد كـ مستخدم عادي لتجنب رفض مدير الملفات للعمل كـ root
-    local user_name=""
-    if command -v logname &>/dev/null; then
-        user_name=$(logname 2>/dev/null)
-    fi
-    if [ -z "$user_name" ] && [ -n "$SUDO_USER" ]; then
-        user_name="$SUDO_USER"
-    fi
-    if [ -z "$user_name" ]; then
-        user_name=$(who am i | awk '{print $1}' 2>/dev/null)
-    fi
+    # اكتشاف المستخدم الحقيقي لتجنب مشاكل Root مع الواجهات الرسومية
+    local user_name=$(logname 2>/dev/null || echo $SUDO_USER)
     
+    # 1. المحاولة الأفضل: فتح المجلد بهوية المستخدم العادي عبر xdg-open
     if [ -n "$user_name" ] && [ "$user_name" != "root" ]; then
-        # المحاولة الأولى: باستخدام xdg-open تحت هوية المستخدم
-        if su -u "$user_name" -c "DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY xdg-open '$dir'" &>/dev/null; then
+        if su - "$user_name" -c "DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY xdg-open '$dir'" &>/dev/null; then
             return 0
         fi
     fi
 
-    # المحاولة الثانية: استخدام xdg-open المباشر (للتوزيعات التي تسمح بفتح مدير الملفات كجذر)
+    # 2. محاولة xdg-open المباشرة
     if command -v xdg-open &> /dev/null; then
         xdg-open "$dir" &>/dev/null &
         return 0
     fi
 
-    # المحاولة الثالثة: البحث عن مدير الملفات الافتراضي عبر gio (متوفر في أغلب البيئات الحديثة)
+    # 3. محاولة استخدام gio (موجود في معظم توزيعات غنوم الحديثة)
     if command -v gio &> /dev/null; then
         gio open "$dir" &>/dev/null &
         return 0
     fi
 
-    # المحاولة الأخيرة: العودة للطريقة التقليدية في حال فشل كل ما سبق
+    # 4. محاولة استدعاء مدير الملفات يدوياً بناءً على النوع
     local fm_list=("nautilus" "dolphin" "thunar" "pcmanfm" "caja" "nemo")
     for fm in "${fm_list[@]}"; do
         if command -v "$fm" &> /dev/null; then
@@ -354,8 +347,8 @@ open_file_manager() {
             return 0
         fi
     done
-
-    # إذا فشل كل شيء
+    
+    # في حال فشل كل المحاولات
     echo "$text_cannot_open_gui: $dir"
     return 1
 }
