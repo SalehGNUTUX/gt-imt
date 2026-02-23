@@ -127,8 +127,6 @@ msg() {
             missing_deps)     echo "⚠ الاعتماديات الناقصة:" ;;
             install_deps)     echo "   يمكنك تثبيتها باستخدام الأمر المناسب لنظامك" ;;
             deps_ok)          echo "✓ جميع الاعتماديات مثبتة" ;;
-            ubuntu_cmd)       echo "   sudo apt install zenity p7zip-full" ;;
-            rhel_cmd)         echo "   sudo yum install zenity p7zip" ;;
             install_icon)     echo "📸 جاري تثبيت أيقونة البرنامج..." ;;
             icon_ok)          echo "✓ تم تثبيت الأيقونة" ;;
             desktop_ok)       echo "✓ تم إنشاء مدخل القائمة" ;;
@@ -136,6 +134,9 @@ msg() {
                               echo "   • تشغيل البرنامج عبر الأمر: ${GREEN}imt${NC}"
                               echo "   • أو من قائمة التطبيقات: ${GREEN}GT-IMT${NC}"
                               ;;
+            install_deps_prompt) echo "هل تريد تثبيت الاعتماديات المفقودة الآن؟ (قد تحتاج كلمة مرور sudo)" ;;
+            install_deps_skip)   echo "تم تخطي تثبيت الاعتماديات. يمكنك تثبيتها يدوياً لاحقاً." ;;
+            install_deps_fail)   echo "❌ فشل تثبيت بعض الاعتماديات. يرجى تثبيتها يدوياً." ;;
         esac
     else
         case $key in
@@ -167,8 +168,6 @@ msg() {
             missing_deps)     echo "⚠ Missing dependencies:" ;;
             install_deps)     echo "   You can install them using the appropriate command for your system" ;;
             deps_ok)          echo "✓ All dependencies are installed" ;;
-            ubuntu_cmd)       echo "   sudo apt install zenity p7zip-full" ;;
-            rhel_cmd)         echo "   sudo yum install zenity p7zip" ;;
             install_icon)     echo "📸 Installing application icon..." ;;
             icon_ok)          echo "✓ Icon installed" ;;
             desktop_ok)       echo "✓ Desktop entry created" ;;
@@ -176,6 +175,9 @@ msg() {
                               echo "   • Run the tool with command: ${GREEN}imt${NC}"
                               echo "   • Or from applications menu: ${GREEN}GT-IMT${NC}"
                               ;;
+            install_deps_prompt) echo "Do you want to install missing dependencies now? (sudo password may be required)" ;;
+            install_deps_skip)   echo "Skipped dependency installation. You can install them manually later." ;;
+            install_deps_fail)   echo "❌ Failed to install some dependencies. Please install them manually." ;;
         esac
     fi
 }
@@ -224,9 +226,9 @@ check_sudo() {
 }
 
 # ============================================
-# التحقق من الاعتماديات
+# دالة تثبيت التبعيات حسب مدير الحزم
 # ============================================
-check_dependencies() {
+install_dependencies() {
     print_step "$(msg check_deps)"
     local missing=()
     
@@ -242,31 +244,81 @@ check_dependencies() {
         missing+=("mount")
     fi
     
-    if [ ${#missing[@]} -gt 0 ]; then
-        print_warning "$(msg missing_deps)"
-        for dep in "${missing[@]}"; do
-            echo "   - $dep"
-        done
+    if [ ${#missing[@]} -eq 0 ]; then
+        print_success "$(msg deps_ok)"
+        return 0
+    fi
+    
+    print_warning "$(msg missing_deps)"
+    for dep in "${missing[@]}"; do
+        echo "   - $dep"
+    done
+    echo ""
+    
+    # تحديد مدير الحزم
+    local pkg_manager=""
+    local install_cmd=""
+    local packages=()
+    
+    if command -v apt &>/dev/null; then
+        pkg_manager="apt"
+        install_cmd="sudo apt update && sudo apt install -y"
+        packages=("zenity" "p7zip-full")
+    elif command -v dnf &>/dev/null; then
+        pkg_manager="dnf"
+        install_cmd="sudo dnf install -y"
+        packages=("zenity" "p7zip")
+    elif command -v yum &>/dev/null; then
+        pkg_manager="yum"
+        install_cmd="sudo yum install -y"
+        packages=("zenity" "p7zip")
+    elif command -v pacman &>/dev/null; then
+        pkg_manager="pacman"
+        install_cmd="sudo pacman -S --noconfirm"
+        packages=("zenity" "p7zip")
+    elif command -v zypper &>/dev/null; then
+        pkg_manager="zypper"
+        install_cmd="sudo zypper install -y"
+        packages=("zenity" "p7zip")
+    else
         echo ""
-        echo "$(msg install_deps)"
+        print_warning "$(msg install_deps)"
         echo ""
         echo "   # Ubuntu/Debian:"
-        echo "   $(msg ubuntu_cmd)"
+        echo "   sudo apt install zenity p7zip-full"
         echo ""
-        echo "   # RHEL/CentOS/Fedora:"
-        echo "   $(msg rhel_cmd)"
+        echo "   # Fedora/RHEL/CentOS:"
+        echo "   sudo dnf install zenity p7zip"
         echo ""
-        
-        safe_read "$(if [ "$LANG_MODE" = "AR" ]; then echo "هل تريد متابعة التثبيت على أي حال؟ (قد لا تعمل الأداة بدونها) [y/N]: "; else echo "Continue installation anyway? (tool may not work without them) [y/N]: "; fi)" continue_anyway
-        
-        if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
-            print_warning "$(msg cancelled)"
-            exit 1
+        echo "   # Arch:"
+        echo "   sudo pacman -S zenity p7zip"
+        echo ""
+        echo "   # OpenSUSE:"
+        echo "   sudo zypper install zenity p7zip"
+        echo ""
+        safe_read "$(if [ "$LANG_MODE" = "AR" ]; then echo "اضغط Enter للمتابعة دون تثبيت..."; else echo "Press Enter to continue without installing..."; fi)" dummy
+        return 1
+    fi
+    
+    echo ""
+    print_info "$(msg install_deps_prompt)"
+    safe_read "[y/N]: " install_choice
+    
+    if [ "$install_choice" = "y" ] || [ "$install_choice" = "Y" ]; then
+        echo ""
+        print_info "جاري التثبيت باستخدام $pkg_manager..."
+        if eval "$install_cmd ${packages[*]}"; then
+            print_success "$(msg deps_ok)"
+            return 0
+        else
+            print_error "$(msg install_deps_fail)"
+            return 1
         fi
     else
-        print_success "$(msg deps_ok)"
+        echo ""
+        print_warning "$(msg install_deps_skip)"
+        return 1
     fi
-    echo ""
 }
 
 # ============================================
@@ -533,7 +585,8 @@ main() {
     check_internet
     check_sudo
     
-    check_dependencies
+    # محاولة تثبيت التبعيات أولاً
+    install_dependencies
 
     # تنزيل الملفات الأساسية والأيقونات
     download_files
