@@ -116,8 +116,10 @@ load_texts() {
         text_uninstall_confirm="❓ هل أنت متأكد من إزالة البرنامج؟ (سيتم حذف جميع الملفات) [y/N]: "
         text_uninstall_done="✅ تمت إزالة البرنامج بنجاح"
         text_uninstall_cancelled="❌ تم إلغاء الإزالة"
-        text_missing_zenity="⚠️ الأمر zenity غير مثبت! لا يمكن فتح مدير الملفات الرسومي.\n\nللتثبيت:\n   • أوبونتو/ديبيان: sudo apt install zenity\n   • فيدورا: sudo dnf install zenity\n   • آرتش: sudo pacman -S zenity\n   • أوبن سوزي: sudo zypper install zenity"
-        text_missing_7z="⚠️ الأمر 7z غير مثبت! لا يمكن فك ضغط الملفات.\n\nللتثبيت:\n   • أوبونتو/ديبيان: sudo apt install p7zip-full\n   • فيدورا: sudo dnf install p7zip\n   • آرتش: sudo pacman -S p7zip\n   • أوبن سوزي: sudo zypper install p7zip"
+        text_missing_zenity="⚠️ لم يتم العثور على أداة رسومية. الرجاء تثبيت zenity أو kdialog حسب بيئتك."
+        text_manual_path="🔍 الرجاء إدخال المسار يدوياً:"
+        text_file_not_found="❌ الملف غير موجود أو الإدخال فارغ."
+        text_choose_gui="🖥️ اختر باستخدام مدير الملفات"
     else
         # English texts
         text_title="GT-IMT - ISO Mount Tool"
@@ -158,8 +160,10 @@ load_texts() {
         text_uninstall_confirm="❓ Are you sure you want to uninstall? (all files will be removed) [y/N]: "
         text_uninstall_done="✅ Uninstall completed successfully"
         text_uninstall_cancelled="❌ Uninstall cancelled"
-        text_missing_zenity="⚠️ zenity is not installed! Cannot open graphical file dialog.\n\nTo install:\n   • Ubuntu/Debian: sudo apt install zenity\n   • Fedora: sudo dnf install zenity\n   • Arch: sudo pacman -S zenity\n   • OpenSUSE: sudo zypper install zenity"
-        text_missing_7z="⚠️ 7z is not installed! Cannot extract files.\n\nTo install:\n   • Ubuntu/Debian: sudo apt install p7zip-full\n   • Fedora: sudo dnf install p7zip\n   • Arch: sudo pacman -S p7zip\n   • OpenSUSE: sudo zypper install p7zip"
+        text_missing_zenity="⚠️ No graphical dialog tool found. Please install zenity or kdialog for your environment."
+        text_manual_path="🔍 Please enter the path manually:"
+        text_file_not_found="❌ File not found or empty input."
+        text_choose_gui="🖥️ Choose using file manager"
     fi
 }
 
@@ -195,16 +199,101 @@ EOF
   sleep 1
 }
 
+# Detect desktop environment and available GUI tools
+detect_desktop_environment() {
+    if [ -n "$XDG_CURRENT_DESKTOP" ]; then
+        echo "$XDG_CURRENT_DESKTOP" | tr '[:upper:]' '[:lower:]'
+    elif [ -n "$DESKTOP_SESSION" ]; then
+        echo "$DESKTOP_SESSION" | tr '[:upper:]' '[:lower:]'
+    elif [ -n "$GNOME_DESKTOP_SESSION_ID" ]; then
+        echo "gnome"
+    elif [ -n "$KDE_FULL_SESSION" ]; then
+        echo "kde"
+    else
+        # Check running processes
+        if pgrep -x "plasmashell" >/dev/null; then
+            echo "kde"
+        elif pgrep -x "gnome-shell" >/dev/null; then
+            echo "gnome"
+        elif pgrep -x "xfwm4" >/dev/null; then
+            echo "xfce"
+        else
+            echo "unknown"
+        fi
+    fi
+}
+
+get_dialog_tool() {
+    if command -v kdialog &>/dev/null && [ "$(detect_desktop_environment)" = "kde" ]; then
+        echo "kdialog"
+    elif command -v zenity &>/dev/null; then
+        echo "zenity"
+    else
+        echo "none"
+    fi
+}
+
+select_file_gui() {
+    local title="$1"
+    local filter="$2"
+    local initial_dir="$3"
+    local selected=""
+    
+    case $(get_dialog_tool) in
+        kdialog)
+            selected=$(kdialog --getopenfilename "$initial_dir" "$filter" 2>/dev/null)
+            ;;
+        zenity)
+            selected=$(zenity --file-selection --title="$title" --file-filter="$filter" --filename="$initial_dir/" 2>/dev/null)
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    echo "$selected"
+    [ -n "$selected" ]
+}
+
+select_dir_gui() {
+    local title="$1"
+    local initial_dir="$2"
+    local selected=""
+    
+    case $(get_dialog_tool) in
+        kdialog)
+            selected=$(kdialog --getexistingdirectory "$initial_dir" 2>/dev/null)
+            ;;
+        zenity)
+            selected=$(zenity --file-selection --directory --title="$title" --filename="$initial_dir/" 2>/dev/null)
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    echo "$selected"
+    [ -n "$selected" ]
+}
+
 # Function to check dependencies and show helpful message
 check_dependencies_runtime() {
     local missing=()
-    if ! command -v zenity &> /dev/null; then
-        missing+=("zenity")
+    if ! command -v zenity &> /dev/null && ! command -v kdialog &> /dev/null; then
         echo -e "$text_missing_zenity"
+        # We continue anyway, manual input will be used
     fi
     if ! command -v 7z &> /dev/null; then
         missing+=("p7zip")
-        echo -e "$text_missing_7z"
+        if [ "$lang" = "ar" ]; then
+            echo "⚠️ الأمر 7z غير مثبت! لا يمكن فك ضغط الملفات."
+            echo "   • أوبونتو/ديبيان: sudo apt install p7zip-full"
+            echo "   • فيدورا: sudo dnf install p7zip"
+            echo "   • آرتش: sudo pacman -S p7zip"
+        else
+            echo "⚠️ 7z is not installed! Cannot extract files."
+            echo "   • Ubuntu/Debian: sudo apt install p7zip-full"
+            echo "   • Fedora: sudo dnf install p7zip"
+            echo "   • Arch: sudo pacman -S p7zip"
+        fi
     fi
     if ! command -v mount &> /dev/null; then
         missing+=("mount")
@@ -214,17 +303,14 @@ check_dependencies_runtime() {
             echo "⚠️ mount command not found! This is a core system utility."
         fi
     fi
-    if [ ${#missing[@]} -gt 0 ]; then
-        if [ "$lang" = "ar" ]; then
-            echo ""
-            echo "الرجاء تثبيت الإعتماديات الناقصة ثم أعد تشغيل البرنامج."
-            read -p "اضغط Enter للخروج..."
-        else
-            echo ""
-            echo "Please install missing dependencies and restart the program."
-            read -p "Press Enter to exit..."
-        fi
-        exit 1
+    if [ ${#missing[@]} -gt 0 ] && [ "$lang" = "ar" ]; then
+        echo ""
+        echo "الرجاء تثبيت الإعتماديات الناقصة ثم أعد تشغيل البرنامج."
+        read -p "اضغط Enter للخروج..."
+    elif [ ${#missing[@]} -gt 0 ]; then
+        echo ""
+        echo "Please install missing dependencies and restart the program."
+        read -p "Press Enter to exit..."
     fi
 }
 
@@ -334,16 +420,30 @@ unmount_iso() {
 
 # Function to select ISO file
 select_iso_file() {
-    if [ "$lang" = "ar" ]; then
-        selected=$(zenity --file-selection --title="$text_select" --file-filter="ملفات القرص | *.iso *.img *.ISO *.IMG" --filename="$iso_dir/" 2>/dev/null)
-    else
-        selected=$(zenity --file-selection --title="$text_select" --file-filter="Disk files | *.iso *.img *.ISO *.IMG" --filename="$iso_dir/" 2>/dev/null)
+    local selected=""
+    
+    # Try GUI first
+    if command -v zenity &>/dev/null || command -v kdialog &>/dev/null; then
+        selected=$(select_file_gui "$text_select" "*.iso *.img *.ISO *.IMG" "$iso_dir")
     fi
-
-    [ -z "$selected" ] && return 1
-
+    
+    # Fallback to manual input
+    if [ -z "$selected" ]; then
+        echo ""
+        echo "$text_manual_path"
+        read -e -p "> " selected
+        selected="${selected/#\~/$HOME}"
+    fi
+    
+    if [ -z "$selected" ] || [ ! -f "$selected" ]; then
+        echo "$text_file_not_found"
+        sleep 2
+        return 1
+    fi
+    
     iso_dir=$(dirname "$selected")
     echo "$selected" > "$temp_file"
+    return 0
 }
 
 # Main mount function
@@ -378,9 +478,9 @@ mount_iso() {
 
                     if mount | grep -q "$mount_point"; then
                         if [ "$lang" = "ar" ]; then
-                            zenity --error --text="نقطة الضم موجودة بالفعل: $mount_point" --width=300
+                            zenity --error --text="نقطة الضم موجودة بالفعل: $mount_point" --width=300 2>/dev/null || echo "⚠️ Mount point already exists: $mount_point"
                         else
-                            zenity --error --text="Mount point already exists: $mount_point" --width=300
+                            zenity --error --text="Mount point already exists: $mount_point" --width=300 2>/dev/null || echo "⚠️ Mount point already exists: $mount_point"
                         fi
                         continue
                     fi
@@ -392,13 +492,17 @@ mount_iso() {
 
                     if sudo mount -o loop "$iso_path" "$mount_point"; then
                         if [ "$lang" = "ar" ]; then
-                            zenity --info --text="تم الضم بنجاح في: $mount_point" --width=300
+                            zenity --info --text="تم الضم بنجاح في: $mount_point" --width=300 2>/dev/null || echo "✅ Successfully mounted at: $mount_point"
                         else
-                            zenity --info --text="Successfully mounted at: $mount_point" --width=300
+                            zenity --info --text="Successfully mounted at: $mount_point" --width=300 2>/dev/null || echo "✅ Successfully mounted at: $mount_point"
                         fi
                     else
                         sudo rmdir "$mount_point" 2>/dev/null
-                        zenity --error --text="$text_failed!" --width=200
+                        if [ "$lang" = "ar" ]; then
+                            zenity --error --text="$text_failed!" --width=200 2>/dev/null || echo "❌ $text_failed"
+                        else
+                            zenity --error --text="$text_failed!" --width=200 2>/dev/null || echo "❌ $text_failed"
+                        fi
                     fi
                 fi
                 ;;
@@ -419,7 +523,11 @@ mount_iso() {
 # ISO extraction function
 extract_iso() {
     if ! command -v 7z &> /dev/null; then
-        echo -e "$text_missing_7z"
+        if [ "$lang" = "ar" ]; then
+            echo "⚠️ الأمر 7z غير مثبت! لا يمكن فك الضغط."
+        else
+            echo "⚠️ 7z is not installed! Cannot extract."
+        fi
         read -p "Press Enter to continue..."
         return
     fi
@@ -456,10 +564,12 @@ extract_iso() {
                 output_dir="$(dirname "$iso_path")/$(basename "$iso_path" .iso)_extracted"
                 ;;
             2)
-                if [ "$lang" = "ar" ]; then
-                    output_dir=$(zenity --file-selection --directory --title="$text_select_dir" 2>/dev/null)
-                else
-                    output_dir=$(zenity --file-selection --directory --title="$text_select_dir" 2>/dev/null)
+                # Try GUI folder selection
+                output_dir=$(select_dir_gui "$text_select_dir" "$HOME")
+                if [ -z "$output_dir" ]; then
+                    echo "$text_manual_path"
+                    read -e -p "> " output_dir
+                    output_dir="${output_dir/#\~/$HOME}"
                 fi
                 [ -z "$output_dir" ] && return
                 ;;
@@ -476,9 +586,24 @@ extract_iso() {
         local extract_option=""
         if [ -d "$output_dir" ] && [ "$(ls -A "$output_dir" 2>/dev/null)" ]; then
             if [ "$lang" = "ar" ]; then
-                choice=$(zenity --list --title="$text_existing" --text="المجلد الهدف يحتوي على ملفات موجودة مسبقاً:" --column="خيار" "$text_overwrite" "$text_skip" "$text_cancel" --width=400 --height=200)
+                choice=$(zenity --list --title="$text_existing" --text="المجلد الهدف يحتوي على ملفات موجودة مسبقاً:" --column="خيار" "$text_overwrite" "$text_skip" "$text_cancel" --width=400 --height=200 2>/dev/null)
             else
-                choice=$(zenity --list --title="$text_existing" --text="Target folder contains existing files:" --column="Option" "$text_overwrite" "$text_skip" "$text_cancel" --width=400 --height=200)
+                choice=$(zenity --list --title="$text_existing" --text="Target folder contains existing files:" --column="Option" "$text_overwrite" "$text_skip" "$text_cancel" --width=400 --height=200 2>/dev/null)
+            fi
+
+            # Fallback if zenity fails
+            if [ -z "$choice" ]; then
+                echo ""
+                echo "$text_existing"
+                echo "1) $text_overwrite"
+                echo "2) $text_skip"
+                echo "3) $text_cancel"
+                read -p "$text_choose [1-3]: " manual_choice
+                case $manual_choice in
+                    1) choice="$text_overwrite" ;;
+                    2) choice="$text_skip" ;;
+                    *) return ;;
+                esac
             fi
 
             case $choice in
@@ -504,12 +629,16 @@ extract_iso() {
 
         if 7z x "$iso_path" -o"$output_dir" $extract_option >/dev/null 2>&1; then
             if [ "$lang" = "ar" ]; then
-                zenity --info --text="تم فك الضغط بنجاح في: $output_dir" --width=400
+                zenity --info --text="تم فك الضغط بنجاح في: $output_dir" --width=400 2>/dev/null || echo "✅ Successfully extracted to: $output_dir"
             else
-                zenity --info --text="Successfully extracted to: $output_dir" --width=400
+                zenity --info --text="Successfully extracted to: $output_dir" --width=400 2>/dev/null || echo "✅ Successfully extracted to: $output_dir"
             fi
         else
-            zenity --error --text="$text_failed!" --width=200
+            if [ "$lang" = "ar" ]; then
+                zenity --error --text="$text_failed!" --width=200 2>/dev/null || echo "❌ $text_failed"
+            else
+                zenity --error --text="$text_failed!" --width=200 2>/dev/null || echo "❌ $text_failed"
+            fi
         fi
     fi
     sleep 1
@@ -526,7 +655,7 @@ setup_iso_dir() {
         echo "|      $text_setup            |"
         echo "=============================="
         if [ "$lang" = "ar" ]; then
-            echo "| 1. $text_setup جديد   |"
+            echo "| 1. إنشاء مجلد ISO جديد   |"
             echo "| 2. فتح مدير الملفات       |"
             echo "| 0. $text_back                   |"
         else
@@ -542,9 +671,9 @@ setup_iso_dir() {
             1)
                 mkdir -p "$iso_dir"
                 if [ "$lang" = "ar" ]; then
-                    zenity --info --text="تم إنشاء المجلد: $iso_dir" --width=200
+                    zenity --info --text="تم إنشاء المجلد: $iso_dir" --width=200 2>/dev/null || echo "✅ Created folder: $iso_dir"
                 else
-                    zenity --info --text="Created folder: $iso_dir" --width=200
+                    zenity --info --text="Created folder: $iso_dir" --width=200 2>/dev/null || echo "✅ Created folder: $iso_dir"
                 fi
                 ;;
             2)
@@ -612,7 +741,7 @@ update_tool() {
         fi
     done
     
-    # تنزيل الأيقونات أيضاً (اختصاراً نكتفي بالأيقونة الرئيسية)
+    # Download icons
     mkdir -p "icons"
     local icon_sizes=("16x16" "24x24" "32x32" "48x48" "64x64" "128x128" "256x256" "512x512")
     for size in "${icon_sizes[@]}"; do
@@ -632,7 +761,7 @@ update_tool() {
         sudo cp "imt.sh" "/usr/local/bin/imt"
         sudo chmod +x "/usr/local/bin/imt"
         
-        # تحديث الأيقونات
+        # Update icons
         for size in "${icon_sizes[@]}"; do
             if [ -f "icons/$size.png" ]; then
                 sudo mkdir -p "/usr/share/icons/hicolor/$size/apps"
@@ -645,7 +774,7 @@ update_tool() {
             sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
         fi
         
-        # تحديث الإصدار
+        # Update version
         echo "$remote_version" > "$version_file"
         
         rm -rf "$temp_dir"
@@ -664,21 +793,21 @@ uninstall_tool() {
         echo ""
         echo "🗑️  إزالة الملفات..."
         
-        # إزالة الملف التنفيذي
+        # Remove binary
         sudo rm -f /usr/local/bin/imt 2>/dev/null
         
-        # إزالة مداخل القائمة
+        # Remove desktop entries
         sudo rm -f /usr/share/applications/gt-imt.desktop 2>/dev/null
         sudo rm -f /usr/share/applications/imt.desktop 2>/dev/null
         
-        # إزالة الأيقونات
+        # Remove icons
         sudo rm -f /usr/share/icons/hicolor/*/apps/gt-imt.png 2>/dev/null
         sudo rm -f /usr/share/icons/hicolor/*/apps/imt.png 2>/dev/null
         
-        # إزالة مجلد الإعدادات
+        # Remove config
         rm -rf "$HOME/.config/gt-imt" 2>/dev/null
         
-        # تحديث قاعدة بيانات الأيقونات
+        # Update icon cache
         if command -v gtk-update-icon-cache &> /dev/null; then
             sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
         fi
@@ -713,7 +842,7 @@ settings_menu() {
 
         case $settings_choice in
             1)
-                # تبديل اللغة
+                # Switch language
                 if [ "$lang" = "ar" ]; then
                     lang="en"
                 else
@@ -730,7 +859,7 @@ settings_menu() {
                 sleep 1
                 ;;
             2)
-                # التحقق من التحديثات
+                # Check for updates
                 clear
                 display_logo
                 if check_for_updates; then
@@ -761,7 +890,7 @@ settings_menu() {
                 fi
                 ;;
             3)
-                # حول البرنامج
+                # About
                 clear
                 display_logo
                 echo ""
@@ -780,7 +909,7 @@ settings_menu() {
                 fi
                 ;;
             4)
-                # إزالة البرنامج
+                # Uninstall
                 uninstall_tool
                 ;;
             0)
@@ -796,7 +925,7 @@ settings_menu() {
 
 # Main menu
 main_menu() {
-    # تحقق من التبعيات أولاً
+    # Check runtime dependencies (non-fatal)
     check_dependencies_runtime
 
     while true; do
