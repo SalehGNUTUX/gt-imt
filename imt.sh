@@ -298,94 +298,65 @@ select_dir_gui() {
     return 1
 }
 
-# دالة محسنة لفتح مدير الملفات
+# دالة محسنة لفتح مدير الملفات الافتراضي بشكل جذري
 open_file_manager() {
     local dir="$1"
     
     # التأكد من وجود المجلد
     if [ ! -d "$dir" ]; then
         mkdir -p "$dir"
+        chmod 777 "$dir"
     fi
     
     # التحقق من وجود بيئة رسومية
     if ! check_display; then
-        if [ "$lang" = "ar" ]; then
-            echo "$text_no_display"
-            echo "$text_cannot_open_gui: cd $dir"
-        else
-            echo "$text_no_display"
-            echo "$text_cannot_open_gui: cd $dir"
-        fi
+        echo "$text_no_display"
+        echo "$text_cannot_open_gui: cd $dir"
         return 1
     fi
+
+    # الحل الجذري: محاولة فتح المجلد كـ مستخدم عادي لتجنب رفض مدير الملفات للعمل كـ root
+    local user_name=""
+    if command -v logname &>/dev/null; then
+        user_name=$(logname 2>/dev/null)
+    fi
+    if [ -z "$user_name" ] && [ -n "$SUDO_USER" ]; then
+        user_name="$SUDO_USER"
+    fi
+    if [ -z "$user_name" ]; then
+        user_name=$(who am i | awk '{print $1}' 2>/dev/null)
+    fi
     
-    # محاولة استخدام xdg-open
-    if command -v xdg-open &> /dev/null; then
-        xdg-open "$dir" 2>/dev/null &
-        sleep 2 # انتظر قليلاً لنتأكد من نجاح الفتح
-        # التحقق من أن xdg-open نجح (بفحص العملية)
-        if pgrep -f "xdg-open.*$dir" >/dev/null; then
+    if [ -n "$user_name" ] && [ "$user_name" != "root" ]; then
+        # المحاولة الأولى: باستخدام xdg-open تحت هوية المستخدم
+        if su -u "$user_name" -c "DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY xdg-open '$dir'" &>/dev/null; then
             return 0
         fi
     fi
-    
-    # محاولة استخدام أوامر مدير الملفات المباشرة حسب بيئة سطح المكتب
-    local desktop_env=$(detect_desktop_environment)
-    local file_managers=()
-    
-    case $desktop_env in
-        *kde*|*plasma*)
-            file_managers=("dolphin" "krusader" "konqueror")
-            ;;
-        *gnome*|*unity*|*cinnamon*)
-            file_managers=("nautilus" "nemo" "caja")
-            ;;
-        *xfce*)
-            file_managers=("thunar")
-            ;;
-        *lxqt*|*lxde*)
-            file_managers=("pcmanfm-qt" "pcmanfm")
-            ;;
-        *mate*)
-            file_managers=("caja")
-            ;;
-        *enlightenment*)
-            file_managers=("enlightenment_filemanager")
-            ;;
-        *)
-            # قائمة عامة بمديري الملفات الشائعين
-            file_managers=("nautilus" "dolphin" "thunar" "pcmanfm" "caja" "nemo" "krusader")
-            ;;
-    esac
-    
-    for fm in "${file_managers[@]}"; do
+
+    # المحاولة الثانية: استخدام xdg-open المباشر (للتوزيعات التي تسمح بفتح مدير الملفات كجذر)
+    if command -v xdg-open &> /dev/null; then
+        xdg-open "$dir" &>/dev/null &
+        return 0
+    fi
+
+    # المحاولة الثالثة: البحث عن مدير الملفات الافتراضي عبر gio (متوفر في أغلب البيئات الحديثة)
+    if command -v gio &> /dev/null; then
+        gio open "$dir" &>/dev/null &
+        return 0
+    fi
+
+    # المحاولة الأخيرة: العودة للطريقة التقليدية في حال فشل كل ما سبق
+    local fm_list=("nautilus" "dolphin" "thunar" "pcmanfm" "caja" "nemo")
+    for fm in "${fm_list[@]}"; do
         if command -v "$fm" &> /dev/null; then
-            "$fm" "$dir" 2>/dev/null &
+            "$fm" "$dir" &>/dev/null &
             return 0
         fi
     done
-    
-    # محاولة أخيرة: استخدام xdg-open مرة أخرى مع عرض الأخطاء
-    if command -v xdg-open &> /dev/null; then
-        if [ "$lang" = "ar" ]; then
-            echo "⚠️ xdg-open فشل. سيتم عرض معلومات إضافية:"
-            xdg-open "$dir" 2>&1 | head -5
-        else
-            echo "⚠️ xdg-open failed. Showing additional info:"
-            xdg-open "$dir" 2>&1 | head -5
-        fi
-    fi
-    
-    # فشل كل المحاولات
-    if [ "$lang" = "ar" ]; then
-        echo "$text_cannot_open_gui"
-        echo "cd $dir"
-        echo "ثم استخدم: ls لعرض المحتويات"
-    else
-        echo "$text_cannot_open_gui"
-        echo "cd $dir"
-        echo "Then use: ls to list contents"
-    fi
+
+    # إذا فشل كل شيء
+    echo "$text_cannot_open_gui: $dir"
     return 1
 }
 
