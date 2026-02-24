@@ -6,39 +6,132 @@
 # Supports Arabic & English
 # =============================================
 
-if [ "$EUID" -ne 0 ]; then
-    if command -v pkexec &> /dev/null; then
-        exec pkexec "$0" "$@"
+# ============================================
+# دوال مساعدة
+# ============================================
+
+# تنفيذ أمر بصلاحيات الجذر مع الحفاظ على البيئة
+run_as_root() {
+    if command -v pkexec &>/dev/null; then
+        # pkexec يحافظ على البيئة بشكل أفضل
+        pkexec env DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" "$@"
     else
-        echo "Please run as root"
-        exit 1
+        # اللجوء إلى sudo
+        sudo env DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" "$@"
     fi
-fi
+}
+
+# دالة للحصول على المستخدم الحقيقي
+get_real_user() {
+    local user=$(logname 2>/dev/null)
+    if [ -n "$user" ] && [ "$user" != "root" ]; then
+        echo "$user"
+        return 0
+    fi
+    if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+        echo "$SUDO_USER"
+        return 0
+    fi
+    user=$(who am i | awk '{print $1}')
+    if [ -n "$user" ] && [ "$user" != "root" ]; then
+        echo "$user"
+        return 0
+    fi
+    echo "$USER"
+}
+
+# دالة محسنة لفتح مدير الملفات (تعمل تحت المستخدم العادي)
+open_file_manager() {
+    local dir="$1"
+
+    if [ ! -d "$dir" ]; then
+        # إذا كان المجلد يتطلب صلاحيات جذر لإنشائه
+        if [[ "$dir" == /mnt/* ]]; then
+            run_as_root mkdir -p "$dir"
+            run_as_root chmod 777 "$dir"
+        else
+            mkdir -p "$dir"
+        fi
+    fi
+
+    if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
+        echo "⚠️ لا توجد بيئة رسومية."
+        echo "يمكنك الوصول إلى المجلد يدوياً عبر: cd $dir"
+        return 1
+    fi
+
+    # محاولة xdg-open
+    if command -v xdg-open &>/dev/null; then
+        xdg-open "$dir" &>/dev/null &
+        return 0
+    fi
+
+    # محاولة gio
+    if command -v gio &>/dev/null; then
+        gio open "$dir" &>/dev/null &
+        return 0
+    fi
+
+    # البحث عن مدير ملفات معروف بناءً على بيئة سطح المكتب
+    local fm_list=()
+    if [ -n "$XDG_CURRENT_DESKTOP" ]; then
+        case "$XDG_CURRENT_DESKTOP" in
+            *KDE*|*kde*|*Plasma*) fm_list=("dolphin" "krusader") ;;
+            *GNOME*|*gnome*|*Unity*) fm_list=("nautilus" "gnome-open") ;;
+            *XFCE*|*xfce*) fm_list=("thunar") ;;
+            *Cinnamon*) fm_list=("nemo") ;;
+            *MATE*) fm_list=("caja") ;;
+            *LXQt*) fm_list=("pcmanfm-qt") ;;
+            *LXDE*) fm_list=("pcmanfm") ;;
+            *) fm_list=("nautilus" "dolphin" "thunar" "pcmanfm" "caja" "nemo") ;;
+        esac
+    else
+        fm_list=("nautilus" "dolphin" "thunar" "pcmanfm" "caja" "nemo")
+    fi
+
+    for fm in "${fm_list[@]}"; do
+        if command -v "$fm" &>/dev/null; then
+            "$fm" "$dir" &>/dev/null &
+            return 0
+        fi
+    done
+
+    echo "⚠️ تعذر فتح مدير الملفات. المسار: $dir"
+    return 1
+}
+
+# ============================================
+# الإعدادات الأساسية
+# ============================================
 
 HERE="$(dirname "$(readlink -f "${0}")")"
 
-# Detect default terminal
-if [ -n "$(command -v x-terminal-emulator)" ]; then
-    TERMINAL="x-terminal-emulator"
-elif [ -n "$(command -v gnome-terminal)" ]; then
-    TERMINAL="gnome-terminal"
-elif [ -n "$(command -v konsole)" ]; then
-    TERMINAL="konsole"
-elif [ -n "$(command -v xterm)" ]; then
-    TERMINAL="xterm"
-else
-    echo "No terminal emulator found!"
-    exit 1
+# منع حلقة التيرمنال المفرغة (Terminal Recursion Fix)
+if [ "$GT_IMT_RUNNING" != "true" ]; then
+    export GT_IMT_RUNNING="true"
+
+    # كشف التيرمنال الافتراضي
+    if [ -n "$(command -v x-terminal-emulator)" ]; then
+        TERMINAL="x-terminal-emulator"
+    elif [ -n "$(command -v gnome-terminal)" ]; then
+        TERMINAL="gnome-terminal"
+    elif [ -n "$(command -v konsole)" ]; then
+        TERMINAL="konsole"
+    elif [ -n "$(command -v xterm)" ]; then
+        TERMINAL="xterm"
+    fi
+
+    # تشغيل في تيرمنال جديد فقط إذا لم نكن في واحد بالفعل
+    if [ -n "$TERMINAL" ] && [ ! -t 0 ]; then
+        if [ -f "$HERE/usr/bin/imt" ]; then
+            exec "$TERMINAL" -e "$HERE/usr/bin/imt"
+        else
+            exec "$TERMINAL" -e "$0"
+        fi
+    fi
 fi
 
-# Run the tool in detected terminal
-if [ -f "$HERE/usr/bin/imt" ]; then
-    "$TERMINAL" -e "$HERE/usr/bin/imt"
-else
-    "$TERMINAL" -e "$0"
-fi
-
-# Initial settings
+# المسارات
 iso_dir="$HOME/iso"
 mnt_dir="/mnt/iso_mounts"
 temp_file="/tmp/iso_selection.tmp"
@@ -46,9 +139,10 @@ lang_file="$HOME/.config/gt-imt/language"
 version_file="$HOME/.config/gt-imt/version"
 update_check_file="$HOME/.config/gt-imt/last_update_check"
 
-# إنشاء مجلد الضم الرئيسي إذا لم يكن موجوداً
-sudo mkdir -p "$mnt_dir"
-sudo chmod 777 "$mnt_dir"
+# إنشاء مجلد الضم الرئيسي إذا لم يكن موجوداً (بصلاحيات الجذر)
+if [ ! -d "$mnt_dir" ]; then
+    run_as_root sh -c "mkdir -p '$mnt_dir' && chmod 777 '$mnt_dir'"
+fi
 
 # الإصدار الحالي
 CURRENT_VERSION="2.0.0"
@@ -56,15 +150,11 @@ CURRENT_VERSION="2.0.0"
 # إنشاء مجلد الإعدادات
 mkdir -p "$HOME/.config/gt-imt"
 
-# Language settings (auto/ar/en)
+# إعدادات اللغة
 lang="auto"
-
-# Load saved language if exists
 if [ -f "$lang_file" ]; then
     lang=$(cat "$lang_file")
 fi
-
-# Auto-detect system language if set to auto
 if [ "$lang" = "auto" ]; then
     system_lang=$(locale | grep LANG= | cut -d= -f2 | cut -d_ -f1)
     if [ "$system_lang" = "ar" ]; then
@@ -74,10 +164,9 @@ if [ "$lang" = "auto" ]; then
     fi
 fi
 
-# Load language texts
+# تحميل النصوص
 load_texts() {
     if [ "$lang" = "ar" ]; then
-        # Arabic texts
         text_title="GT-IMT - أداة ضم ملفات ISO"
         text_setup="📁 إعداد مجلد ISO"
         text_mount="💿 ضم ملف ISO"
@@ -116,15 +205,8 @@ load_texts() {
         text_uninstall_confirm="❓ هل أنت متأكد من إزالة البرنامج؟ (سيتم حذف جميع الملفات) [y/N]: "
         text_uninstall_done="✅ تمت إزالة البرنامج بنجاح"
         text_uninstall_cancelled="❌ تم إلغاء الإزالة"
-        text_missing_zenity="⚠️ لم يتم العثور على أداة رسومية. الرجاء تثبيت zenity أو kdialog."
-        text_manual_path="🔍 الرجاء إدخال المسار يدوياً:"
-        text_file_not_found="❌ الملف غير موجود أو الإدخال فارغ."
-        text_choose_gui="🖥️ اختر باستخدام مدير الملفات"
-        text_try_gui_first="🔍 محاولة فتح مدير الملفات..."
-        text_cannot_open_gui="⚠️ تعذر فتح مدير الملفات رسومياً. يمكنك الوصول إلى المجلد يدوياً عبر الأمر:"
-        text_no_display="⚠️ لا توجد بيئة رسومية (DISPLAY غير مضبوط)."
+        text_open_mnt="📍 فتح مجلد الضم"
     else
-        # English texts
         text_title="GT-IMT - ISO Mount Tool"
         text_setup="📁 Setup ISO folder"
         text_mount="💿 Mount ISO File"
@@ -163,50 +245,14 @@ load_texts() {
         text_uninstall_confirm="❓ Are you sure you want to uninstall? (all files will be removed) [y/N]: "
         text_uninstall_done="✅ Uninstall completed successfully"
         text_uninstall_cancelled="❌ Uninstall cancelled"
-        text_missing_zenity="⚠️ No graphical dialog tool found. Please install zenity or kdialog."
-        text_manual_path="🔍 Please enter the path manually:"
-        text_file_not_found="❌ File not found or empty input."
-        text_choose_gui="🖥️ Choose using file manager"
-        text_try_gui_first="🔍 Attempting to open file manager..."
-        text_cannot_open_gui="⚠️ Cannot open file manager graphically. You can access the folder manually via:"
-        text_no_display="⚠️ No graphical environment (DISPLAY not set)."
+        text_open_mnt="📍 Open Mount Directory"
     fi
 }
-
 load_texts
-
-# Enable case-insensitive matching
 shopt -s nocasematch
 
-# Function to display logo
-display_logo() {
-  echo -e "\033[1;36m"
-  cat << "EOF"
-  /$$$$$$  /$$$$$$$$    /$$$$$$ /$$      /$$ /$$$$$$$$
- /$$__  $$|__  $$__/   |_  $$_/| $$$    /$$$|__  $$__/
-| $$  \__/   | $$        | $$  | $$$$  /$$$$   | $$   
-| $$ /$$$$   | $$ /$$$$$$| $$  | $$ $$/$$ $$   | $$   
-| $$|_  $$   | $$|______/| $$  | $$  $$$| $$   | $$   
-| $$  \ $$   | $$        | $$  | $$\  $ | $$   | $$   
-|  $$$$$$/   | $$       /$$$$$$| $$ \/  | $$   | $$   
- \______/    |__/      |______/|__/     |__/   |__/   
-                                                      
-                                                      
-EOF
-  echo -e "\033[1;33m"
-  if [ "$lang" = "ar" ]; then
-    echo "GT-IMT - أداة إدارة ملفات ISO"
-    echo "إصدار $CURRENT_VERSION"
-  else
-    echo "GT-IMT - ISO Management Tool"
-    echo "Version $CURRENT_VERSION"
-  fi
-  echo -e "\033[0m"
-  sleep 1
-}
-
 # ============================================
-# GUI file/directory selection functions (محسنة)
+# دوال الواجهة الرسومية
 # ============================================
 
 # التحقق من وجود بيئة رسومية
@@ -228,7 +274,6 @@ select_file_gui() {
         return 1
     fi
 
-    # 1. محاولة kdialog (KDE)
     if command -v kdialog &> /dev/null; then
         selected=$(kdialog --title "$title" --getopenfilename "$initial_dir" "$filter" 2>/dev/null)
         if [ -n "$selected" ] && [ -f "$selected" ]; then
@@ -237,7 +282,6 @@ select_file_gui() {
         fi
     fi
 
-    # 2. محاولة zenity (GNOME/GTK)
     if command -v zenity &> /dev/null; then
         selected=$(zenity --file-selection --title="$title" --file-filter="$filter" --filename="$initial_dir/" 2>/dev/null)
         if [ -n "$selected" ] && [ -f "$selected" ]; then
@@ -246,7 +290,6 @@ select_file_gui() {
         fi
     fi
 
-    # 3. محاولة Xdialog (بديل)
     if command -v Xdialog &> /dev/null; then
         selected=$(Xdialog --title "$title" --fselect "$initial_dir/" 0 0 2>/dev/null)
         if [ -n "$selected" ] && [ -f "$selected" ]; then
@@ -268,7 +311,6 @@ select_dir_gui() {
         return 1
     fi
 
-    # 1. kdialog
     if command -v kdialog &> /dev/null; then
         selected=$(kdialog --title "$title" --getexistingdirectory "$initial_dir" 2>/dev/null)
         if [ -n "$selected" ] && [ -d "$selected" ]; then
@@ -277,7 +319,6 @@ select_dir_gui() {
         fi
     fi
 
-    # 2. zenity
     if command -v zenity &> /dev/null; then
         selected=$(zenity --file-selection --directory --title="$title" --filename="$initial_dir/" 2>/dev/null)
         if [ -n "$selected" ] && [ -d "$selected" ]; then
@@ -286,7 +327,6 @@ select_dir_gui() {
         fi
     fi
 
-    # 3. Xdialog
     if command -v Xdialog &> /dev/null; then
         selected=$(Xdialog --title "$title" --fselect "$initial_dir/" 0 0 2>/dev/null)
         if [ -n "$selected" ] && [ -d "$selected" ]; then
@@ -299,134 +339,37 @@ select_dir_gui() {
 }
 
 # ============================================
-# دالة فتح مدير الملفات (تم التحديث للحل الجذري)
+# دوال عرض المعلومات
 # ============================================
-open_file_manager() {
-    local dir="$1"
-    
-    # التأكد من وجود المجلد
-    if [ ! -d "$dir" ]; then
-        mkdir -p "$dir"
-        chmod 777 "$dir"
-    fi
-    
-    # التحقق من وجود بيئة رسومية
-    if ! check_display; then
-        echo "$text_no_display"
-        echo "$text_cannot_open_gui: cd $dir"
-        return 1
-    fi
 
-    # اكتشاف المستخدم الحقيقي لتجنب مشاكل Root مع الواجهات الرسومية
-    local user_name=$(logname 2>/dev/null || echo $SUDO_USER)
-    
-    # 1. المحاولة الأفضل: فتح المجلد بهوية المستخدم العادي عبر xdg-open
-    if [ -n "$user_name" ] && [ "$user_name" != "root" ]; then
-        if su - "$user_name" -c "DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY xdg-open '$dir'" &>/dev/null; then
-            return 0
-        fi
-    fi
+display_logo() {
+    echo -e "\033[1;36m"
+    cat << "EOF"
+  /$$$$$$  /$$$$$$$$    /$$$$$$ /$$      /$$ /$$$$$$$$
+ /$$__  $$|__  $$__/   |_  $$_/| $$$    /$$$|__  $$__/
+| $$  \__/   | $$        | $$  | $$$$  /$$$$   | $$
+| $$ /$$$$   | $$ /$$$$$$| $$  | $$ $$/$$ $$   | $$
+| $$|_  $$   | $$|______/| $$  | $$  $$$| $$   | $$
+| $$  \ $$   | $$        | $$  | $$\  $ | $$   | $$
+|  $$$$$$/   | $$       /$$$$$$| $$ \/  | $$   | $$
+ \______/    |__/      |______/|__/     |__/   |__/
 
-    # 2. محاولة xdg-open المباشرة
-    if command -v xdg-open &> /dev/null; then
-        xdg-open "$dir" &>/dev/null &
-        return 0
-    fi
-
-    # 3. محاولة استخدام gio (موجود في معظم توزيعات غنوم الحديثة)
-    if command -v gio &> /dev/null; then
-        gio open "$dir" &>/dev/null &
-        return 0
-    fi
-
-    # 4. محاولة استدعاء مدير الملفات يدوياً بناءً على النوع
-    local fm_list=("nautilus" "dolphin" "thunar" "pcmanfm" "caja" "nemo")
-    for fm in "${fm_list[@]}"; do
-        if command -v "$fm" &> /dev/null; then
-            "$fm" "$dir" &>/dev/null &
-            return 0
-        fi
-    done
-    
-    # في حال فشل كل المحاولات
-    echo "$text_cannot_open_gui: $dir"
-    return 1
-}
-
-# كشف بيئة سطح المكتب
-detect_desktop_environment() {
-    if [ -n "$XDG_CURRENT_DESKTOP" ]; then
-        echo "$XDG_CURRENT_DESKTOP" | tr '[:upper:]' '[:lower:]'
-    elif [ -n "$DESKTOP_SESSION" ]; then
-        echo "$DESKTOP_SESSION" | tr '[:upper:]' '[:lower:]'
-    elif [ -n "$GNOME_DESKTOP_SESSION_ID" ]; then
-        echo "gnome"
-    elif [ -n "$KDE_FULL_SESSION" ]; then
-        echo "kde"
+EOF
+    echo -e "\033[1;33m"
+    if [ "$lang" = "ar" ]; then
+        echo "GT-IMT - أداة إدارة ملفات ISO"
+        echo "إصدار $CURRENT_VERSION"
     else
-        # Check running processes
-        if pgrep -x "plasmashell" >/dev/null; then
-            echo "kde"
-        elif pgrep -x "gnome-shell" >/dev/null; then
-            echo "gnome"
-        elif pgrep -x "xfwm4" >/dev/null; then
-            echo "xfce"
-        elif pgrep -x "cinnamon" >/dev/null; then
-            echo "cinnamon"
-        elif pgrep -x "mate-panel" >/dev/null; then
-            echo "mate"
-        else
-            echo "unknown"
-        fi
+        echo "GT-IMT - ISO Management Tool"
+        echo "Version $CURRENT_VERSION"
     fi
+    echo -e "\033[0m"
+    sleep 1
 }
 
-# ============================================
-# Function to check dependencies and show helpful message
-# ============================================
-check_dependencies_runtime() {
-    local missing=()
-    if ! command -v zenity &> /dev/null && ! command -v kdialog &> /dev/null && ! command -v Xdialog &> /dev/null; then
-        echo -e "$text_missing_zenity"
-    fi
-    if ! command -v 7z &> /dev/null; then
-        missing+=("p7zip")
-        if [ "$lang" = "ar" ]; then
-            echo "⚠️ الأمر 7z غير مثبت! لا يمكن فك ضغط الملفات."
-            echo "   • أوبونتو/ديبيان: sudo apt install p7zip-full"
-            echo "   • فيدورا: sudo dnf install p7zip"
-            echo "   • آرتش: sudo pacman -S p7zip"
-        else
-            echo "⚠️ 7z is not installed! Cannot extract files."
-            echo "   • Ubuntu/Debian: sudo apt install p7zip-full"
-            echo "   • Fedora: sudo dnf install p7zip"
-            echo "   • Arch: sudo pacman -S p7zip"
-        fi
-    fi
-    if ! command -v mount &> /dev/null; then
-        missing+=("mount")
-        if [ "$lang" = "ar" ]; then
-            echo "⚠️ الأمر mount غير موجود! هذا أمر أساسي في النظام."
-        else
-            echo "⚠️ mount command not found! This is a core system utility."
-        fi
-    fi
-    if [ ${#missing[@]} -gt 0 ] && [ "$lang" = "ar" ]; then
-        echo ""
-        echo "الرجاء تثبيت الإعتماديات الناقصة ثم أعد تشغيل البرنامج."
-        read -p "اضغط Enter للخروج..."
-    elif [ ${#missing[@]} -gt 0 ]; then
-        echo ""
-        echo "Please install missing dependencies and restart the program."
-        read -p "Press Enter to exit..."
-    fi
-}
-
-# Function to show mounted files
 show_mounted() {
     clear
     display_logo
-
     echo ""
     echo "=============================="
     echo "|   $text_mounted            |"
@@ -453,7 +396,88 @@ show_mounted() {
     read
 }
 
-# Function to unmount ISO
+# ============================================
+# دوال العمليات الرئيسية
+# ============================================
+
+select_iso_file() {
+    local selected=""
+    echo "🔍 محاولة فتح مدير الملفات..."
+    selected=$(select_file_gui "$text_select" "*.iso *.img *.ISO *.IMG" "$iso_dir")
+
+    if [ -z "$selected" ]; then
+        echo ""
+        echo "📂 الرجاء إدخال المسار يدوياً:"
+        read -e -p "> " selected
+        selected="${selected/#\~/$HOME}"
+    fi
+
+    if [ -z "$selected" ] || [ ! -f "$selected" ]; then
+        echo "❌ الملف غير موجود."
+        sleep 2
+        return 1
+    fi
+
+    iso_dir=$(dirname "$selected")
+    echo "$selected" > "$temp_file"
+    return 0
+}
+
+mount_iso() {
+    while true; do
+        clear
+        display_logo
+        echo ""
+        echo "=============================="
+        echo "|        $text_mount          |"
+        echo "=============================="
+        echo "| 1. $text_select          |"
+        echo "| 2. $text_show            |"
+        echo "| 0. $text_back              |"
+        echo "=============================="
+        echo ""
+        read -p "$text_choose [0-2]: " choice
+
+        case $choice in
+            1)
+                if select_iso_file; then
+                    iso_path=$(cat "$temp_file")
+                    mount_name=$(basename "$iso_path" | sed 's/\.[^.]*$//')
+                    mount_point="$mnt_dir/$mount_name"
+
+                    if mount | grep -q "$mount_point"; then
+                        if [ "$lang" = "ar" ]; then
+                            zenity --error --text="نقطة الضم موجودة بالفعل: $mount_point" --width=300 2>/dev/null || echo "⚠️ نقطة الضم موجودة بالفعل: $mount_point"
+                        else
+                            zenity --error --text="Mount point already exists: $mount_point" --width=300 2>/dev/null || echo "⚠️ Mount point already exists: $mount_point"
+                        fi
+                        continue
+                    fi
+
+                    # تنفيذ العمليات في طلب استيثاق واحد
+                    if run_as_root sh -c "mkdir -p '$mount_point' && chmod 777 '$mount_point' && mount -o loop '$iso_path' '$mount_point'"; then
+                        if [ "$lang" = "ar" ]; then
+                            zenity --info --text="تم الضم بنجاح في: $mount_point" --width=300 2>/dev/null || echo "✅ تم الضم بنجاح في: $mount_point"
+                        else
+                            zenity --info --text="Successfully mounted at: $mount_point" --width=300 2>/dev/null || echo "✅ Successfully mounted at: $mount_point"
+                        fi
+                    else
+                        run_as_root rmdir "$mount_point" 2>/dev/null
+                        if [ "$lang" = "ar" ]; then
+                            zenity --error --text="$text_failed!" --width=200 2>/dev/null || echo "❌ $text_failed"
+                        else
+                            zenity --error --text="$text_failed!" --width=200 2>/dev/null || echo "❌ $text_failed"
+                        fi
+                    fi
+                fi
+                ;;
+            2) show_mounted ;;
+            0) return ;;
+            *) echo "$text_invalid"; sleep 1 ;;
+        esac
+    done
+}
+
 unmount_iso() {
     while true; do
         clear
@@ -477,13 +501,8 @@ unmount_iso() {
 
         echo ""
         echo "=============================="
-        if [ "$lang" = "ar" ]; then
-            echo "| 1. $text_unmount             |"
-            echo "| 0. $text_back                   |"
-        else
-            echo "| 1. $text_unmount                |"
-            echo "| 0. $text_back                   |"
-        fi
+        echo "| 1. $text_unmount             |"
+        echo "| 0. $text_back                |"
         echo "=============================="
         echo ""
         read -p "$text_choose [0-1]: " sub_choice
@@ -499,8 +518,8 @@ unmount_iso() {
 
                     if [[ $file_num -ge 1 && $file_num -le ${#mounted[@]} ]]; then
                         mount_point="${mounted[$((file_num-1))]}"
-                        if sudo umount "$mount_point"; then
-                            sudo rmdir "$mount_point" 2>/dev/null || true
+                        # تنفيذ الفك والحذف في طلب واحد
+                        if run_as_root sh -c "umount '$mount_point' && rmdir '$mount_point'"; then
                             echo "$text_success"
                         else
                             echo "$text_failed"
@@ -515,134 +534,21 @@ unmount_iso() {
                     sleep 1
                 fi
                 ;;
-            0)
-                return
-                ;;
-            *)
-                echo "$text_invalid"
-                sleep 1
-                ;;
+            0) return ;;
+            *) echo "$text_invalid"; sleep 1 ;;
         esac
     done
 }
 
-# Function to select ISO file (محسنة)
-select_iso_file() {
-    local selected=""
-    
-    echo "$text_try_gui_first"
-    
-    # محاولة استخدام الواجهة الرسومية أولاً
-    selected=$(select_file_gui "$text_select" "*.iso *.img *.ISO *.IMG" "$iso_dir")
-    
-    # إذا فشلت، نطلب الإدخال اليدوي
-    if [ -z "$selected" ]; then
-        echo ""
-        echo "$text_manual_path"
-        read -e -p "> " selected
-        selected="${selected/#\~/$HOME}"
-    fi
-    
-    if [ -z "$selected" ] || [ ! -f "$selected" ]; then
-        echo "$text_file_not_found"
-        sleep 2
-        return 1
-    fi
-    
-    iso_dir=$(dirname "$selected")
-    echo "$selected" > "$temp_file"
-    return 0
-}
-
-# Main mount function
-mount_iso() {
-    while true; do
-        clear
-        display_logo
-
-        echo ""
-        echo "=============================="
-        echo "|        $text_mount          |"
-        echo "=============================="
-        if [ "$lang" = "ar" ]; then
-            echo "| 1. $text_select          |"
-            echo "| 2. $text_show            |"
-            echo "| 0. $text_back                   |"
-        else
-            echo "| 1. $text_select          |"
-            echo "| 2. $text_show            |"
-            echo "| 0. $text_back                   |"
-        fi
-        echo "=============================="
-        echo ""
-        read -p "$text_choose [0-2]: " choice
-
-        case $choice in
-            1)
-                if select_iso_file; then
-                    iso_path=$(cat "$temp_file")
-                    mount_name=$(basename "$iso_path" | sed 's/\.[^.]*$//')
-                    mount_point="$mnt_dir/$mount_name"
-
-                    if mount | grep -q "$mount_point"; then
-                        if [ "$lang" = "ar" ]; then
-                            zenity --error --text="نقطة الضم موجودة بالفعل: $mount_point" --width=300 2>/dev/null || echo "⚠️ Mount point already exists: $mount_point"
-                        else
-                            zenity --error --text="Mount point already exists: $mount_point" --width=300 2>/dev/null || echo "⚠️ Mount point already exists: $mount_point"
-                        fi
-                        continue
-                    fi
-
-                    if [ ! -d "$mount_point" ]; then
-                        sudo mkdir -p "$mount_point"
-                        sudo chmod 777 "$mount_point"
-                    fi
-
-                    if sudo mount -o loop "$iso_path" "$mount_point"; then
-                        if [ "$lang" = "ar" ]; then
-                            zenity --info --text="تم الضم بنجاح في: $mount_point" --width=300 2>/dev/null || echo "✅ Successfully mounted at: $mount_point"
-                        else
-                            zenity --info --text="Successfully mounted at: $mount_point" --width=300 2>/dev/null || echo "✅ Successfully mounted at: $mount_point"
-                        fi
-                    else
-                        sudo rmdir "$mount_point" 2>/dev/null
-                        if [ "$lang" = "ar" ]; then
-                            zenity --error --text="$text_failed!" --width=200 2>/dev/null || echo "❌ $text_failed"
-                        else
-                            zenity --error --text="$text_failed!" --width=200 2>/dev/null || echo "❌ $text_failed"
-                        fi
-                    fi
-                fi
-                ;;
-            2)
-                show_mounted
-                ;;
-            0)
-                return
-                ;;
-            *)
-                echo "$text_invalid"
-                sleep 1
-                ;;
-        esac
-    done
-}
-
-# ISO extraction function (محسنة)
 extract_iso() {
     if ! command -v 7z &> /dev/null; then
-        if [ "$lang" = "ar" ]; then
-            echo "⚠️ الأمر 7z غير مثبت! لا يمكن فك الضغط."
-        else
-            echo "⚠️ 7z is not installed! Cannot extract."
-        fi
-        read -p "Press Enter to continue..."
+        echo "⚠️ 7z غير مثبت. يرجى تثبيته أولاً."
+        read -p "Press Enter..."
         return
     fi
 
     clear
     display_logo
-
     echo ""
     echo "=============================="
     echo "|      $text_extract          |"
@@ -651,51 +557,35 @@ extract_iso() {
 
     if select_iso_file; then
         iso_path=$(cat "$temp_file")
-
         echo ""
         echo "=============================="
-        if [ "$lang" = "ar" ]; then
-            echo "| 1. $text_extract هنا           |"
-            echo "| 2. $text_extract في مجلد آخر   |"
-            echo "| 0. $text_back                   |"
-        else
-            echo "| 1. Extract here           |"
-            echo "| 2. Extract to folder      |"
-            echo "| 0. Back                   |"
-        fi
+        echo "| 1. $text_extract هنا       |"
+        echo "| 2. $text_extract في مجلد آخر |"
+        echo "| 0. $text_back              |"
         echo "=============================="
         echo ""
         read -p "$text_choose [0-2]: " extract_choice
 
         case $extract_choice in
-            1)
-                output_dir="$(dirname "$iso_path")/$(basename "$iso_path" .iso)_extracted"
-                ;;
+            1) output_dir="$(dirname "$iso_path")/$(basename "$iso_path" .iso)_extracted" ;;
             2)
-                echo "$text_try_gui_first"
+                echo "🔍 محاولة فتح مدير الملفات..."
                 output_dir=$(select_dir_gui "$text_select_dir" "$HOME")
                 if [ -z "$output_dir" ]; then
-                    echo "$text_manual_path"
+                    echo "📂 الرجاء إدخال المسار يدوياً:"
                     read -e -p "> " output_dir
                     output_dir="${output_dir/#\~/$HOME}"
                 fi
                 [ -z "$output_dir" ] && return
                 ;;
-            0)
-                return
-                ;;
-            *)
-                echo "$text_invalid"
-                sleep 1
-                return
-                ;;
+            0) return ;;
+            *) echo "$text_invalid"; sleep 1; return ;;
         esac
 
         local extract_option=""
         if [ -d "$output_dir" ] && [ "$(ls -A "$output_dir" 2>/dev/null)" ]; then
-            # محاولة استخدام الأداة الرسومية للسؤال عن الاستبدال
             local choice=""
-            if command -v zenity &> /dev/null; then
+            if command -v zenity &>/dev/null; then
                 if [ "$lang" = "ar" ]; then
                     choice=$(zenity --list --title="$text_existing" --text="المجلد الهدف يحتوي على ملفات موجودة مسبقاً:" --column="خيار" "$text_overwrite" "$text_skip" "$text_cancel" --width=400 --height=200 2>/dev/null)
                 else
@@ -703,7 +593,6 @@ extract_iso() {
                 fi
             fi
 
-            # Fallback if GUI fails
             if [ -z "$choice" ]; then
                 echo ""
                 echo "$text_existing"
@@ -719,213 +608,110 @@ extract_iso() {
             fi
 
             case $choice in
-                "$text_overwrite")
-                    rm -rf "${output_dir:?}/"*
-                    ;;
-                "$text_skip")
-                    extract_option="-aou"
-                    ;;
-                "$text_cancel"|*)
-                    return
-                    ;;
+                "$text_overwrite") rm -rf "${output_dir:?}/"* ;;
+                "$text_skip") extract_option="-aou" ;;
+                *) return ;;
             esac
         else
             mkdir -p "$output_dir"
         fi
 
-        if [ "$lang" = "ar" ]; then
-            echo "جاري فك الضغط، يرجى الانتظار..."
-        else
-            echo "Extracting, please wait..."
-        fi
-
+        echo "جاري فك الضغط..."
         if 7z x "$iso_path" -o"$output_dir" $extract_option >/dev/null 2>&1; then
-            if [ "$lang" = "ar" ]; then
-                zenity --info --text="تم فك الضغط بنجاح في: $output_dir" --width=400 2>/dev/null || echo "✅ Successfully extracted to: $output_dir"
-            else
-                zenity --info --text="Successfully extracted to: $output_dir" --width=400 2>/dev/null || echo "✅ Successfully extracted to: $output_dir"
-            fi
+            echo "✅ تم فك الضغط بنجاح إلى: $output_dir"
         else
-            if [ "$lang" = "ar" ]; then
-                zenity --error --text="$text_failed!" --width=200 2>/dev/null || echo "❌ $text_failed"
-            else
-                zenity --error --text="$text_failed!" --width=200 2>/dev/null || echo "❌ $text_failed"
-            fi
+            echo "❌ فشل فك الضغط."
         fi
+        sleep 2
     fi
-    sleep 1
 }
 
-# ISO directory setup (محسنة)
 setup_iso_dir() {
     while true; do
         clear
         display_logo
-
         echo ""
         echo "=============================="
         echo "|      $text_setup            |"
         echo "=============================="
-        if [ "$lang" = "ar" ]; then
-            echo "| 1. إنشاء مجلد ISO جديد   |"
-            echo "| 2. فتح مدير الملفات       |"
-            echo "| 0. $text_back                   |"
-        else
-            echo "| 1. Create new ISO folder  |"
-            echo "| 2. Open file manager      |"
-            echo "| 0. Back                   |"
-        fi
+        echo "| 1. إنشاء مجلد ISO جديد   |"
+        echo "| 2. فتح مجلد ISO الخاص بك  |"
+        echo "| 3. $text_open_mnt         |"
+        echo "| 0. $text_back              |"
         echo "=============================="
         echo ""
-        read -p "$text_choose [0-2]: " sub_choice
+        read -p "$text_choose [0-3]: " sub_choice
 
         case $sub_choice in
             1)
                 mkdir -p "$iso_dir"
-                if [ "$lang" = "ar" ]; then
-                    zenity --info --text="تم إنشاء المجلد: $iso_dir" --width=200 2>/dev/null || echo "✅ Created folder: $iso_dir"
-                else
-                    zenity --info --text="Created folder: $iso_dir" --width=200 2>/dev/null || echo "✅ Created folder: $iso_dir"
-                fi
-                ;;
-            2)
-                open_file_manager "$iso_dir"
-                ;;
-            0)
-                return
-                ;;
-            *)
-                echo "$text_invalid"
+                echo "✅ تم إنشاء المجلد: $iso_dir"
                 sleep 1
                 ;;
+            2) open_file_manager "$iso_dir" ;;
+            3) open_file_manager "$mnt_dir" ;;
+            0) return ;;
+            *) echo "$text_invalid"; sleep 1 ;;
         esac
     done
 }
 
-# Function to check for updates
 check_for_updates() {
-    if [ "$lang" = "ar" ]; then
-        echo "جاري التحقق من التحديثات..."
-    else
-        echo "Checking for updates..."
-    fi
-    
+    echo "جاري التحقق من التحديثات..."
     local remote_version=""
-    if command -v curl &> /dev/null; then
+    if command -v curl &>/dev/null; then
         remote_version=$(curl -s --connect-timeout 5 "https://raw.githubusercontent.com/SalehGNUTUX/gt-imt/main/version.txt" 2>/dev/null)
-    elif command -v wget &> /dev/null; then
+    elif command -v wget &>/dev/null; then
         remote_version=$(wget -qO- --timeout=5 "https://raw.githubusercontent.com/SalehGNUTUX/gt-imt/main/version.txt" 2>/dev/null)
     fi
-    
     remote_version=$(echo "$remote_version" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
-    
     date +%s > "$update_check_file"
-    
     if [ -n "$remote_version" ] && [ "$remote_version" != "$CURRENT_VERSION" ]; then
-        return 0 # تحديث متوفر
-    else
-        return 1 # لا يوجد تحديث
-    fi
-}
-
-# Function to update the tool
-update_tool() {
-    if [ "$lang" = "ar" ]; then
-        echo "$text_downloading_update"
-    else
-        echo "$text_downloading_update"
-    fi
-    
-    local temp_dir="/tmp/gt-imt-update"
-    rm -rf "$temp_dir"
-    mkdir -p "$temp_dir"
-    
-    cd "$temp_dir" || return 1
-    
-    local files=("imt.sh" "install.sh" "README.md" "version.txt")
-    local base_url="https://raw.githubusercontent.com/SalehGNUTUX/gt-imt/main"
-    
-    for file in "${files[@]}"; do
-        if command -v curl &> /dev/null; then
-            curl -s -f -L -o "$file" "$base_url/$file" 2>/dev/null
-        elif command -v wget &> /dev/null; then
-            wget -q -O "$file" "$base_url/$file" 2>/dev/null
-        fi
-    done
-    
-    # Download icons (محسنة)
-    mkdir -p "icons"
-    local icon_sizes=("16x16" "24x24" "32x32" "48x48" "64x64" "128x128" "256x256" "512x512")
-    for size in "${icon_sizes[@]}"; do
-        local icon_url="$base_url/icons/icons/$size/imt-icon.png"
-        local icon_file="icons/$size.png"
-        if command -v curl &> /dev/null; then
-            curl -s -f -L -o "$icon_file" "$icon_url" 2>/dev/null
-        else
-            wget -q -O "$icon_file" "$icon_url" 2>/dev/null
-        fi
-    done
-    
-    if [ -f "imt.sh" ]; then
-        if [ -f "/usr/local/bin/imt" ]; then
-            sudo cp "/usr/local/bin/imt" "/usr/local/bin/imt.backup" 2>/dev/null
-        fi
-        sudo cp "imt.sh" "/usr/local/bin/imt"
-        sudo chmod +x "/usr/local/bin/imt"
-        
-        # Update icons
-        for size in "${icon_sizes[@]}"; do
-            if [ -f "icons/$size.png" ]; then
-                sudo mkdir -p "/usr/share/icons/hicolor/$size/apps"
-                sudo cp "icons/$size.png" "/usr/share/icons/hicolor/$size/apps/gt-imt.png"
-                sudo cp "icons/$size.png" "/usr/share/icons/hicolor/$size/apps/imt.png"
-            fi
-        done
-        
-        if command -v gtk-update-icon-cache &> /dev/null; then
-            sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
-        fi
-        
-        # Update version
-        echo "$remote_version" > "$version_file"
-        
-        rm -rf "$temp_dir"
         return 0
     else
-        rm -rf "$temp_dir"
         return 1
     fi
 }
 
-# Function to uninstall the tool
+update_tool() {
+    echo "$text_downloading_update"
+    local temp_dir="/tmp/gt-imt-update"
+    rm -rf "$temp_dir"
+    mkdir -p "$temp_dir"
+    cd "$temp_dir" || return 1
+    local files=("imt.sh" "install.sh" "README.md" "version.txt")
+    local base_url="https://raw.githubusercontent.com/SalehGNUTUX/gt-imt/main"
+    for file in "${files[@]}"; do
+        if command -v curl &>/dev/null; then
+            curl -s -f -L -o "$file" "$base_url/$file" 2>/dev/null
+        else
+            wget -q -O "$file" "$base_url/$file" 2>/dev/null
+        fi
+    done
+    if [ -f "imt.sh" ]; then
+        run_as_root cp "imt.sh" "/usr/local/bin/imt"
+        run_as_root chmod +x "/usr/local/bin/imt"
+        echo "$text_update_success"
+        rm -rf "$temp_dir"
+        exec imt
+    else
+        echo "$text_update_failed"
+        rm -rf "$temp_dir"
+    fi
+}
+
 uninstall_tool() {
     echo ""
     read -p "$text_uninstall_confirm" uninstall_confirm
     if [ "$uninstall_confirm" = "y" ] || [ "$uninstall_confirm" = "Y" ]; then
-        echo ""
         echo "🗑️  إزالة الملفات..."
-        
-        # Remove binary
-        sudo rm -f /usr/local/bin/imt 2>/dev/null
-        
-        # Remove desktop entries
-        sudo rm -f /usr/share/applications/gt-imt.desktop 2>/dev/null
-        sudo rm -f /usr/share/applications/imt.desktop 2>/dev/null
-        
-        # Remove icons
-        sudo rm -f /usr/share/icons/hicolor/*/apps/gt-imt.png 2>/dev/null
-        sudo rm -f /usr/share/icons/hicolor/*/apps/imt.png 2>/dev/null
-        
-        # Remove config
-        rm -rf "$HOME/.config/gt-imt" 2>/dev/null
-        
-        # Update icon cache
-        if command -v gtk-update-icon-cache &> /dev/null; then
-            sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ &>/dev/null || true
-        fi
-        
+        run_as_root rm -f /usr/local/bin/imt
+        run_as_root rm -f /usr/share/applications/gt-imt.desktop
+        run_as_root rm -f /usr/share/applications/imt.desktop
+        run_as_root rm -f /usr/share/icons/hicolor/*/apps/gt-imt.png
+        run_as_root rm -f /usr/share/icons/hicolor/*/apps/imt.png
+        rm -rf "$HOME/.config/gt-imt"
         echo "$text_uninstall_done"
-        echo ""
         exit 0
     else
         echo "$text_uninstall_cancelled"
@@ -933,12 +719,10 @@ uninstall_tool() {
     fi
 }
 
-# Settings menu
 settings_menu() {
     while true; do
         clear
         display_logo
-
         echo ""
         echo "=============================="
         echo "|     $text_settings_menu     |"
@@ -954,24 +738,13 @@ settings_menu() {
 
         case $settings_choice in
             1)
-                # Switch language
-                if [ "$lang" = "ar" ]; then
-                    lang="en"
-                else
-                    lang="ar"
-                fi
-                mkdir -p "$HOME/.config/gt-imt"
+                if [ "$lang" = "ar" ]; then lang="en"; else lang="ar"; fi
                 echo "$lang" > "$lang_file"
                 load_texts
-                if [ "$lang" = "ar" ]; then
-                    echo "✅ تم التبديل إلى العربية"
-                else
-                    echo "✅ Switched to English"
-                fi
+                echo "✅ تم التبديل"
                 sleep 1
                 ;;
             2)
-                # Check for updates
                 clear
                 display_logo
                 if check_for_updates; then
@@ -981,16 +754,8 @@ settings_menu() {
                     echo "=============================="
                     echo ""
                     read -p "$text_update_now (y/n): " update_choice
-                    
                     if [ "$update_choice" = "y" ] || [ "$update_choice" = "Y" ]; then
-                        if update_tool; then
-                            echo "$text_update_success"
-                            sleep 2
-                            exec imt
-                        else
-                            echo "$text_update_failed"
-                            sleep 2
-                        fi
+                        update_tool
                     fi
                 else
                     echo ""
@@ -1002,7 +767,6 @@ settings_menu() {
                 fi
                 ;;
             3)
-                # About
                 clear
                 display_logo
                 echo ""
@@ -1014,47 +778,25 @@ settings_menu() {
                 echo ""
                 echo "=============================="
                 echo ""
-                if [ "$lang" = "ar" ]; then
-                    read -p "اضغط Enter للعودة... " dummy
-                else
-                    read -p "Press Enter to continue... " dummy
-                fi
+                read -p "اضغط Enter..."
                 ;;
-            4)
-                # Uninstall
-                uninstall_tool
-                ;;
-            0)
-                return
-                ;;
-            *)
-                echo "$text_invalid"
-                sleep 1
-                ;;
+            4) uninstall_tool ;;
+            0) return ;;
+            *) echo "$text_invalid"; sleep 1 ;;
         esac
     done
 }
 
-# Main menu
 main_menu() {
-    # Check runtime dependencies (non-fatal)
-    check_dependencies_runtime
-
     while true; do
         clear
         display_logo
-
         echo ""
         echo "=============================="
         echo "|     $text_title            |"
         echo "=============================="
-        if [ "$lang" = "ar" ]; then
-            echo "| مسار ISO: $iso_dir"
-            echo "| $text_mount_point: $mnt_dir"
-        else
-            echo "| ISO path: $iso_dir"
-            echo "| $text_mount_point: $mnt_dir"
-        fi
+        echo "| مسار ISO: $iso_dir"
+        echo "| $text_mount_point: $mnt_dir"
         echo "| $text_language"
         echo "=============================="
         echo "| 1. $text_setup            |"
@@ -1066,7 +808,6 @@ main_menu() {
         echo "| 0. $text_exit              |"
         echo "=============================="
         echo ""
-
         read -p "$text_choose [0-6]: " choice
 
         case $choice in
@@ -1077,17 +818,13 @@ main_menu() {
             5) extract_iso ;;
             6) settings_menu ;;
             0)
-                rm -f "$temp_file" 2>/dev/null
+                rm -f "$temp_file"
                 echo "$text_exit"
                 exit 0
                 ;;
-            *)
-                echo "$text_invalid"
-                sleep 1
-                ;;
+            *) echo "$text_invalid"; sleep 1 ;;
         esac
     done
 }
 
-# Start the program
 main_menu
