@@ -206,5 +206,3 @@ Feedback and contributions are welcome! Please use:
 *   **Issues**: [GitHub Issues page](https://github.com/SalehGNUTUX/gt-imt/issues)
 *   **Pull Requests**: For code contributions and improvements.
 ```
-
-تم تحديث ملف `README.md` ليشمل جميع الجوانب المهمة لمشروع GT-IMT. يمكنك الآن استخدامه مباشرة في مستودع المشروع.
